@@ -1,0 +1,24 @@
+package {{packageName}}.init;
+
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.CreativeModeTab;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraftforge.registries.DeferredRegister;
+import net.minecraftforge.registries.RegistryObject;
+
+// Add to your main class: CREATIVE_TABS.register(modEventBus);
+public class {{componentName}}CreativeTab {
+    public static final DeferredRegister<CreativeModeTab> CREATIVE_TABS =
+        DeferredRegister.create(Registries.CREATIVE_MODE_TAB, "{{modId}}");
+
+    public static final RegistryObject<CreativeModeTab> TAB = CREATIVE_TABS.register("{{componentNameLower}}_tab",
+        () -> CreativeModeTab.builder()
+            .title(Component.translatable("itemGroup.{{modId}}.{{componentNameLower}}"))
+            .icon(() -> new ItemStack(Items.DIAMOND))
+            .displayItems((parameters, output) -> {
+                // Add items here: output.accept(YOUR_ITEM.get());
+            })
+            .build());
+}

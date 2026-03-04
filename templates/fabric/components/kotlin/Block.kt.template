@@ -1,0 +1,11 @@
+package {{packageName}}.block
+
+import net.minecraft.block.AbstractBlock
+import net.minecraft.block.Block
+
+// Register: Registry.register(Registries.BLOCK, Identifier.of("{{modId}}", "{{componentNameLower}}"), {{componentName}}Block())
+class {{componentName}}Block : Block(
+    AbstractBlock.Settings.create()
+        .strength(3.0f)
+        .requiresTool()
+)

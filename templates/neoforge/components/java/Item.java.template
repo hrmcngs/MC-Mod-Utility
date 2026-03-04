@@ -1,0 +1,10 @@
+package {{packageName}}.item;
+
+import net.minecraft.world.item.Item;
+
+// Register: ITEMS.register("{{componentNameLower}}", registryName -> new {{componentName}}Item())
+public class {{componentName}}Item extends Item {
+    public {{componentName}}Item() {
+        super(new Item.Properties());
+    }
+}

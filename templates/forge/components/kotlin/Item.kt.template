@@ -1,0 +1,6 @@
+package {{packageName}}.item
+
+import net.minecraft.world.item.Item
+
+// Register: ITEMS.register("{{componentNameLower}}") { {{componentName}}Item() }
+class {{componentName}}Item : Item(Properties())

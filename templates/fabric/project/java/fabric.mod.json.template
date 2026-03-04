@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "{{modId}}",
+  "version": "${version}",
+  "name": "{{modName}}",
+  "description": "{{modName}} - A Minecraft Mod",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "{{packageName}}.{{mainClassName}}"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">={{fabricLoaderVersion}}",
+    "fabric-api": "*",
+    "minecraft": "~{{minecraftVersion}}",
+    "java": ">={{javaVersion}}"
+  }
+}

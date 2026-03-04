@@ -1,0 +1,10 @@
+package {{packageName}}.item;
+
+import net.minecraft.item.Item;
+
+// Register: Registry.register(Registries.ITEM, Identifier.of("{{modId}}", "{{componentNameLower}}"), new {{componentName}}Item())
+public class {{componentName}}Item extends Item {
+    public {{componentName}}Item() {
+        super(new Item.Settings());
+    }
+}

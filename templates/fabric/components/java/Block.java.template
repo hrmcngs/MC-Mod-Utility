@@ -1,0 +1,13 @@
+package {{packageName}}.block;
+
+import net.minecraft.block.AbstractBlock;
+import net.minecraft.block.Block;
+
+// Register: Registry.register(Registries.BLOCK, Identifier.of("{{modId}}", "{{componentNameLower}}"), new {{componentName}}Block())
+public class {{componentName}}Block extends Block {
+    public {{componentName}}Block() {
+        super(AbstractBlock.Settings.create()
+            .strength(3.0f)
+            .requiresTool());
+    }
+}

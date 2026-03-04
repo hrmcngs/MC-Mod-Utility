@@ -1,0 +1,25 @@
+modLoader="kotlinforforge"
+loaderVersion="{{loaderVersionRange}}"
+license="All Rights Reserved"
+
+[[mods]]
+modId="{{modId}}"
+version="${mod_version}"
+displayName="{{modName}}"
+description='''
+{{modName}} - A Minecraft Mod
+'''
+
+[[dependencies.{{modId}}]]
+modId="neoforge"
+type="required"
+versionRange="[{{neoVersion}},)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.{{modId}}]]
+modId="minecraft"
+type="required"
+versionRange="[{{minecraftVersion}},)"
+ordering="NONE"
+side="BOTH"

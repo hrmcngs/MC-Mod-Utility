@@ -1,0 +1,55 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'net.minecraftforge.gradle' version '{{forgeGradleVersion}}'
+}
+
+version = '1.0.0'
+group = '{{groupId}}'
+
+java.toolchain.languageVersion = JavaLanguageVersion.of({{javaVersion}})
+
+minecraft {
+    mappings channel: '{{mappingsChannel}}', version: '{{mappingsVersion}}'
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                "{{modId}}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        server {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                "{{modId}}" {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:{{minecraftVersion}}-{{forgeVersion}}"
+}
+
+jar {
+    manifest {
+        attributes([
+            "Specification-Title"     : "{{modId}}",
+            "Specification-Vendor"    : "",
+            "Specification-Version"   : "1",
+            "Implementation-Title"    : project.name,
+            "Implementation-Version"  : project.jar.archiveVersion,
+            "Implementation-Vendor"   : "",
+        ])
+    }
+}

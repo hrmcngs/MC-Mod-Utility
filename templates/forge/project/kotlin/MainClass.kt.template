@@ -1,0 +1,17 @@
+package {{packageName}}
+
+import net.minecraftforge.fml.common.Mod
+import org.slf4j.Logger
+import com.mojang.logging.LogUtils
+
+@Mod("{{modId}}")
+class {{mainClassName}} {
+    companion object {
+        const val MOD_ID = "{{modId}}"
+        val LOGGER: Logger = LogUtils.getLogger()
+    }
+
+    init {
+        LOGGER.info("{{modName}} initialized!")
+    }
+}

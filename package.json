@@ -1,0 +1,40 @@
+{
+  "name": "mc-mod-utility",
+  "displayName": "MC Mod Utility",
+  "description": "Scaffold Minecraft mod projects and add components for Forge, Fabric, and NeoForge",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.109.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "mc-mod-utility.newProject",
+        "title": "MC Mod Utility: New Mod Project"
+      },
+      {
+        "command": "mc-mod-utility.addComponent",
+        "title": "MC Mod Utility: Add Component"
+      }
+    ]
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "npm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.109.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
+    "eslint": "^9.39.3"
+  }
+}

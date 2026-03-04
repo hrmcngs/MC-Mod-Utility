@@ -1,0 +1,15 @@
+package {{packageName}};
+
+import net.minecraftforge.fml.common.Mod;
+import org.slf4j.Logger;
+import com.mojang.logging.LogUtils;
+
+@Mod("{{modId}}")
+public class {{mainClassName}} {
+    public static final String MOD_ID = "{{modId}}";
+    private static final Logger LOGGER = LogUtils.getLogger();
+
+    public {{mainClassName}}() {
+        LOGGER.info("{{modName}} initialized!");
+    }
+}

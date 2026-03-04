@@ -1,0 +1,33 @@
+plugins {
+    id 'fabric-loom' version '{{loomVersion}}'
+}
+
+version = '1.0.0'
+group = '{{groupId}}'
+
+repositories {
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:{{minecraftVersion}}"
+    mappings "net.fabricmc:yarn:{{yarnMappings}}:v2"
+    modImplementation "net.fabricmc:fabric-loader:{{fabricLoaderVersion}}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:{{fabricApiVersion}}"
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = {{javaVersion}}
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_{{javaVersion}}
+    targetCompatibility = JavaVersion.VERSION_{{javaVersion}}
+}

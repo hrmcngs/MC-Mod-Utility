@@ -1,0 +1,30 @@
+plugins {
+    id 'net.neoforged.moddev' version '{{modDevGradleVersion}}'
+}
+
+version = '1.0.0'
+group = '{{groupId}}'
+
+java.toolchain.languageVersion = JavaLanguageVersion.of({{javaVersion}})
+
+neoForge {
+    version = "{{neoVersion}}"
+
+    runs {
+        client {
+            client()
+        }
+        server {
+            server()
+        }
+    }
+
+    mods {
+        "{{modId}}" {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+dependencies {
+}

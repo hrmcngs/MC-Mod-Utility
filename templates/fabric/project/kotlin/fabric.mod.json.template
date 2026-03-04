@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "{{modId}}",
+  "version": "${version}",
+  "name": "{{modName}}",
+  "description": "{{modName}} - A Minecraft Mod",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      {
+        "adapter": "kotlin",
+        "value": "{{packageName}}.{{mainClassName}}"
+      }
+    ]
+  },
+  "depends": {
+    "fabricloader": ">={{fabricLoaderVersion}}",
+    "fabric-api": "*",
+    "fabric-language-kotlin": ">=1.11.0+kotlin.2.0.0",
+    "minecraft": "~{{minecraftVersion}}",
+    "java": ">={{javaVersion}}"
+  }
+}

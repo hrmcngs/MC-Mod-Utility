@@ -1,0 +1,6 @@
+package {{packageName}}.item
+
+import net.minecraft.item.Item
+
+// Register: Registry.register(Registries.ITEM, Identifier.of("{{modId}}", "{{componentNameLower}}"), {{componentName}}Item())
+class {{componentName}}Item : Item(Settings())

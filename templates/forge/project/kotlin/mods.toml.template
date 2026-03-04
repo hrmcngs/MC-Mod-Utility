@@ -1,0 +1,26 @@
+modLoader="kotlinforforge"
+loaderVersion="{{loaderVersionRange}}"
+license="All Rights Reserved"
+
+[[mods]]
+modId="{{modId}}"
+version="${file.jarVersion}"
+displayName="{{modName}}"
+authors=""
+description='''
+{{modName}} - A Minecraft Mod
+'''
+
+[[dependencies.{{modId}}]]
+modId="forge"
+mandatory=true
+versionRange="{{loaderVersionRange}}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.{{modId}}]]
+modId="minecraft"
+mandatory=true
+versionRange="[{{minecraftVersion}},)"
+ordering="NONE"
+side="BOTH"
