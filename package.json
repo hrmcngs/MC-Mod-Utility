@@ -8,6 +8,7 @@
     "type": "git",
     "url": ""
   },
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.109.0"
   },
