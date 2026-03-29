@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.neoforged.net)",
+      "Bash(npm run lint)",
+      "Bash(npx @vscode/vsce package)",
+      "Bash(npx --yes @vscode/vsce package)",
+      "Bash(npm install --save-dev @vscode/vsce)",
+      "Bash(npx vsce package)",
+      "Bash(gh api repos/hrmcngs/MC-Mod-Utility/dependabot/alerts/2)",
+      "Bash(npm audit)",
+      "Bash(npm audit fix --force)",
+      "Bash(npm audit fix)",
+      "Bash(npm install)",
+      "Bash(python3 -c \"import zlib, struct; print\\(''OK''\\)\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Read(//tmp/**)",
+      "Bash(git status -u)",
+      "Bash(git status -u --short)",
+      "Bash(git push origin main)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}
