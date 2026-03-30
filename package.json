@@ -2,7 +2,7 @@
   "name": "mc-mod-utility",
   "displayName": "MC Mod Utility",
   "description": "Scaffold Minecraft mod projects and add components for Forge, Fabric, and NeoForge",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "MC-Mod-Utility",
   "repository": {
     "type": "git",
