@@ -6,13 +6,34 @@ const { toPackagePath, toSnakeCase, toUpperSnakeCase } = require('../util/pathBu
 
 /**
  * ワークスペースから既存プロジェクトの情報を自動検出する
+ * @param {import('vscode').Uri} [contextUri] 右クリックで選択されたフォルダ
  * @returns {object|null} 検出結果 { loader, modId, groupId, language, workspacePath } or null
  */
-function detectProject() {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) return null;
-
-    const root = workspaceFolders[0].uri.fsPath;
+function detectProject(contextUri) {
+    // 右クリック元からプロジェクトルートを探索（親を辿ってmods.toml等を探す）
+    let root = null;
+    if (contextUri) {
+        let dir = contextUri.fsPath;
+        // ファイルの場合は親ディレクトリを使用
+        if (fs.existsSync(dir) && !fs.statSync(dir).isDirectory()) {
+            dir = path.dirname(dir);
+        }
+        // 親を辿ってbuild.gradleがあるディレクトリを探す
+        let current = dir;
+        while (current && current !== path.dirname(current)) {
+            if (fs.existsSync(path.join(current, 'build.gradle')) ||
+                fs.existsSync(path.join(current, 'build.gradle.kts'))) {
+                root = current;
+                break;
+            }
+            current = path.dirname(current);
+        }
+    }
+    if (!root) {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) return null;
+        root = workspaceFolders[0].uri.fsPath;
+    }
 
     // ローダー検出
     let loader = null;
@@ -77,10 +98,11 @@ function detectProject() {
 
 /**
  * コンポーネント追加ウィザードを実行し、設定オブジェクトを返す
+ * @param {import('vscode').Uri} [contextUri] 右クリックで選択されたフォルダ
  * @returns {Promise<object|null>}
  */
-async function runComponentWizard() {
-    const project = detectProject();
+async function runComponentWizard(contextUri) {
+    const project = detectProject(contextUri);
     if (!project) {
         vscode.window.showErrorMessage(
             'No Minecraft mod project detected in the current workspace. ' +

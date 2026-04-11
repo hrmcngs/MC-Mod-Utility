@@ -15,19 +15,127 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "workspaceContains:**/mods.toml",
+    "workspaceContains:**/neoforge.mods.toml",
+    "workspaceContains:**/fabric.mod.json",
+    "workspaceContains:**/build.gradle",
+    "workspaceContains:**/build.gradle.kts"
+  ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
       {
         "command": "mc-mod-utility.newProject",
-        "title": "MC Mod Utility: New Mod Project"
+        "title": "New Mod Project",
+        "category": "MC Mod Utility",
+        "shortTitle": "New Mod Project"
       },
       {
         "command": "mc-mod-utility.addComponent",
-        "title": "MC Mod Utility: Add Component"
+        "title": "Add Component",
+        "category": "MC Mod Utility",
+        "shortTitle": "Add Component"
+      },
+      {
+        "command": "mc-mod-utility.rotationEditor",
+        "title": "Rotation Editor",
+        "category": "MC Mod Utility",
+        "shortTitle": "Rotation Editor"
+      },
+      {
+        "command": "mc-mod-utility.addRotationParams",
+        "title": "Add @RotationParams",
+        "category": "MC Mod Utility",
+        "shortTitle": "Add @RotationParams"
       }
-    ]
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "mc-mod-utility.newProject",
+          "when": "explorerResourceIsFolder",
+          "group": "mcModUtility@1"
+        },
+        {
+          "command": "mc-mod-utility.addComponent",
+          "when": "explorerResourceIsFolder && mcModUtility.isModProject",
+          "group": "mcModUtility@2"
+        },
+        {
+          "command": "mc-mod-utility.rotationEditor",
+          "when": "mcModUtility.isModProject",
+          "group": "mcModUtility@3"
+        },
+        {
+          "command": "mc-mod-utility.addRotationParams",
+          "when": "!explorerResourceIsFolder",
+          "group": "mcModUtility@4"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "mc-mod-utility.addRotationParams",
+          "when": "editorLangId == java || editorLangId == kotlin",
+          "group": "mcModUtility@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "mc-mod-utility.newProject"
+        },
+        {
+          "command": "mc-mod-utility.addComponent",
+          "when": "mcModUtility.isModProject"
+        },
+        {
+          "command": "mc-mod-utility.rotationEditor",
+          "when": "mcModUtility.isModProject"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MC Mod Utility",
+      "properties": {
+        "mc-mod-utility.rotationEditor.searchPatterns": {
+          "type": "array",
+          "default": [
+            "src/main/java/**/*.java",
+            "src/main/kotlin/**/*.kt",
+            "src/client/java/**/*.java",
+            "src/client/kotlin/**/*.kt",
+            "src/**/*.java",
+            "src/**/*.kt"
+          ],
+          "description": "Glob patterns to search for @RotationParams blocks. Supports any mod loader (Forge, Fabric, NeoForge, Quilt)."
+        },
+        "mc-mod-utility.rotationEditor.excludePatterns": {
+          "type": "string",
+          "default": "**/build/**",
+          "description": "Glob pattern to exclude from search."
+        },
+        "mc-mod-utility.rotationEditor.maxFiles": {
+          "type": "number",
+          "default": 200,
+          "description": "Maximum number of files to scan."
+        },
+        "mc-mod-utility.rcon.host": {
+          "type": "string",
+          "default": "localhost",
+          "description": "RCON server host"
+        },
+        "mc-mod-utility.rcon.port": {
+          "type": "number",
+          "default": 25575,
+          "description": "RCON server port"
+        },
+        "mc-mod-utility.rcon.password": {
+          "type": "string",
+          "default": "minecraft",
+          "description": "RCON server password"
+        }
+      }
+    }
   },
   "scripts": {
     "lint": "eslint .",

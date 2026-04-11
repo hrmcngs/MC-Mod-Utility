@@ -6,9 +6,10 @@ const { toPackagePath, modIdToClassName } = require('../util/pathBuilder');
 /**
  * プロジェクト作成ウィザードを実行し、設定オブジェクトを返す
  * ユーザーがキャンセルした場合は null を返す
+ * @param {import('vscode').Uri} [contextUri] 右クリックで選択されたフォルダ
  * @returns {Promise<object|null>}
  */
-async function runProjectWizard() {
+async function runProjectWizard(contextUri) {
     // Step 1: Modローダー選択
     const loader = await vscode.window.showQuickPick(
         [
@@ -66,12 +67,13 @@ async function runProjectWizard() {
     });
     if (!groupId) return null;
 
-    // Step 7: 出力フォルダ選択
+    // Step 7: 出力フォルダ選択（右クリック元があればデフォルトに使用）
     const folderUri = await vscode.window.showOpenDialog({
         canSelectFolders: true,
         canSelectFiles: false,
         canSelectMany: false,
         openLabel: 'Select output folder',
+        defaultUri: contextUri || undefined,
     });
     if (!folderUri || folderUri.length === 0) return null;
 
