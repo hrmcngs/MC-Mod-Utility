@@ -13,11 +13,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: version
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          git show HEAD~1:package.json > /tmp/prev-package.json 2>/dev/null || echo '{}' > /tmp/prev-package.json
+          PREVIOUS=$(node -p "require('/tmp/prev-package.json').version || 'none'")
+          echo "current=$CURRENT, previous=$PREVIOUS"
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged ($CURRENT) - skipping publish."
+          fi
 
       - uses: actions/setup-node@v4
+        if: steps.version.outputs.changed == 'true'
         with:
           node-version: 20
 
       - run: npm ci
+        if: steps.version.outputs.changed == 'true'
 
       - run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
+        if: steps.version.outputs.changed == 'true'
