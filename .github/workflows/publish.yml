@@ -1,42 +1,57 @@
 name: Publish Extension
 
-permissions:
-  contents: read
+# main への push で patch バージョンを自動 bump し、VS Code Marketplace に publish する。
+# bot のコミットは GITHUB_TOKEN によるものなので再度ワークフローを起こさない（無限ループ防止）。
 
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'LICENSE'
+      - 'SECURITY.md'
+      - 'vsc-extension-quickstart.md'
+      - '.github/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-extension
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if version changed
-        id: version
-        run: |
-          CURRENT=$(node -p "require('./package.json').version")
-          git show HEAD~1:package.json > /tmp/prev-package.json 2>/dev/null || echo '{}' > /tmp/prev-package.json
-          PREVIOUS=$(node -p "require('/tmp/prev-package.json').version || 'none'")
-          echo "current=$CURRENT, previous=$PREVIOUS"
-          if [ "$CURRENT" != "$PREVIOUS" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Version unchanged ($CURRENT) - skipping publish."
-          fi
 
       - uses: actions/setup-node@v4
-        if: steps.version.outputs.changed == 'true'
         with:
           node-version: 20
+          cache: npm
 
       - run: npm ci
-        if: steps.version.outputs.changed == 'true'
 
-      - run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
-        if: steps.version.outputs.changed == 'true'
+      - name: Bump patch version
+        id: bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          NEW_VERSION=$(npm version patch --no-git-tag-version)
+          echo "version=${NEW_VERSION#v}" >> "$GITHUB_OUTPUT"
+          git add package.json package-lock.json
+          git commit -m "chore: release ${NEW_VERSION}"
+          git push
+
+      - name: Publish to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish
+
+      - name: Tag release
+        run: |
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push origin "v${{ steps.bump.outputs.version }}"
