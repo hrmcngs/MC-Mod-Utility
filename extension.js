@@ -3,6 +3,8 @@ const { handleNewProject } = require('./src/commands/newProject');
 const { handleAddComponent } = require('./src/commands/addComponent');
 const { handleRotationEditor } = require('./src/commands/rotationEditor');
 const { handleAddRotationParams } = require('./src/commands/addRotationParams');
+const { register: registerColorChips } = require('./src/commands/colorChips');
+const { handleThemeColorEditor } = require('./src/commands/themeColorEditor');
 
 /**
  * MODプロジェクトかどうかを判定してコンテキストを設定する
@@ -55,8 +57,13 @@ function activate(context) {
         vscode.commands.registerCommand('mc-mod-utility.newProject', (uri) => handleNewProject(context, uri)),
         vscode.commands.registerCommand('mc-mod-utility.addComponent', (uri) => handleAddComponent(context, uri)),
         vscode.commands.registerCommand('mc-mod-utility.rotationEditor', () => handleRotationEditor(context)),
-        vscode.commands.registerCommand('mc-mod-utility.addRotationParams', (uri) => handleAddRotationParams(uri))
+        vscode.commands.registerCommand('mc-mod-utility.addRotationParams', (uri) => handleAddRotationParams(uri)),
+        vscode.commands.registerCommand('mc-mod-utility.themeColorEditor', () => handleThemeColorEditor(context))
     );
+
+    // 16進カラーコード (#RGB / #RRGGBB / #AARRGGBB / 0xRRGGBB / 0xAARRGGBB) を
+    // 全ファイルでカラーチップ表示し、クリックで標準カラーピッカーから編集可能にする。
+    registerColorChips(context);
 }
 
 function deactivate() {}

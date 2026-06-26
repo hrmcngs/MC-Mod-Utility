@@ -48,6 +48,12 @@
         "title": "Add @RotationParams",
         "category": "MC Mod Utility",
         "shortTitle": "Add @RotationParams"
+      },
+      {
+        "command": "mc-mod-utility.themeColorEditor",
+        "title": "Theme Color Editor",
+        "category": "MC Mod Utility",
+        "shortTitle": "Theme Color Editor"
       }
     ],
     "menus": {
@@ -91,6 +97,9 @@
         {
           "command": "mc-mod-utility.rotationEditor",
           "when": "mcModUtility.isModProject"
+        },
+        {
+          "command": "mc-mod-utility.themeColorEditor"
         }
       ]
     },
