@@ -16,6 +16,7 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "workspaceContains:**/mods.toml",
     "workspaceContains:**/neoforge.mods.toml",
     "workspaceContains:**/fabric.mod.json",
