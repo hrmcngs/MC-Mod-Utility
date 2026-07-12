@@ -5,6 +5,7 @@ const { handleRotationEditor } = require('./src/commands/rotationEditor');
 const { handleAddRotationParams } = require('./src/commands/addRotationParams');
 const { register: registerColorChips } = require('./src/commands/colorChips');
 const { handleThemeColorEditor } = require('./src/commands/themeColorEditor');
+const { registerMawAddon } = require('./src/commands/mawAddon');
 
 /**
  * MODプロジェクトかどうかを判定してコンテキストを設定する
@@ -64,6 +65,10 @@ function activate(context) {
     // 16進カラーコード (#RGB / #RRGGBB / #AARRGGBB / 0xRRGGBB / 0xAARRGGBB) を
     // 全ファイルでカラーチップ表示し、クリックで標準カラーピッカーから編集可能にする。
     registerColorChips(context);
+
+    // 「The four primitives and Weapons」のアドオン開発支援。
+    // アドオンだと認識できたときだけ、武器スタジオ・専用ビュー・ステータスバーが有効になる。
+    registerMawAddon(context);
 }
 
 function deactivate() {}

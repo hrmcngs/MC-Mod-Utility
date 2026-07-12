@@ -2,7 +2,7 @@
   "name": "mc-mod-utility",
   "displayName": "MC Mod Utility",
   "description": "Scaffold Minecraft mod projects and add components for Forge, Fabric, and NeoForge",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "publisher": "MC-Mod-Utility",
   "repository": {
     "type": "git",
@@ -21,7 +21,10 @@
     "workspaceContains:**/neoforge.mods.toml",
     "workspaceContains:**/fabric.mod.json",
     "workspaceContains:**/build.gradle",
-    "workspaceContains:**/build.gradle.kts"
+    "workspaceContains:**/build.gradle.kts",
+    "workspaceContains:**/weapon_types/*.json",
+    "workspaceContains:**/maw_saya/*.jsonc",
+    "workspaceContains:**/.maw-addon.json"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -55,8 +58,51 @@
         "title": "Theme Color Editor",
         "category": "MC Mod Utility",
         "shortTitle": "Theme Color Editor"
+      },
+      {
+        "command": "mc-mod-utility.mawWeaponStudio",
+        "title": "MAW: 武器スタジオを開く",
+        "category": "MC Mod Utility",
+        "shortTitle": "武器スタジオ",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "mc-mod-utility.newMawAddon",
+        "title": "MAW: アドオンを新規作成",
+        "category": "MC Mod Utility",
+        "shortTitle": "MAW アドオン作成",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "mc-mod-utility.mawRebrand",
+        "title": "MAW: Mod ID を変更 (リブランド)",
+        "category": "MC Mod Utility",
+        "shortTitle": "リブランド"
+      },
+      {
+        "command": "mc-mod-utility.mawRefresh",
+        "title": "MAW: 情報を再読み込み",
+        "category": "MC Mod Utility",
+        "shortTitle": "再読み込み",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mc-mod-utility.mawShowSource",
+        "title": "MAW: 本体MODの読み込み元を表示",
+        "category": "MC Mod Utility",
+        "shortTitle": "本体MODの読み込み元",
+        "icon": "$(info)"
       }
     ],
+    "views": {
+      "explorer": [
+        {
+          "id": "mcModUtility.mawAddon",
+          "name": "MAW アドオン",
+          "when": "mcModUtility.isMawAddon"
+        }
+      ]
+    },
     "menus": {
       "explorer/context": [
         {
@@ -78,6 +124,37 @@
           "command": "mc-mod-utility.addRotationParams",
           "when": "!explorerResourceIsFolder",
           "group": "mcModUtility@4"
+        },
+        {
+          "command": "mc-mod-utility.mawWeaponStudio",
+          "when": "explorerResourceIsFolder && mcModUtility.isMawAddon",
+          "group": "mcModUtility@5"
+        },
+        {
+          "command": "mc-mod-utility.newMawAddon",
+          "when": "explorerResourceIsFolder",
+          "group": "mcModUtility@6"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "mc-mod-utility.mawWeaponStudio",
+          "when": "view == mcModUtility.mawAddon",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mc-mod-utility.mawRefresh",
+          "when": "view == mcModUtility.mawAddon",
+          "group": "navigation@2"
+        },
+        {
+          "command": "mc-mod-utility.mawShowSource",
+          "when": "view == mcModUtility.mawAddon",
+          "group": "navigation@3"
+        },
+        {
+          "command": "mc-mod-utility.mawRebrand",
+          "when": "view == mcModUtility.mawAddon"
         }
       ],
       "editor/context": [
@@ -101,6 +178,25 @@
         },
         {
           "command": "mc-mod-utility.themeColorEditor"
+        },
+        {
+          "command": "mc-mod-utility.mawWeaponStudio",
+          "when": "mcModUtility.isMawAddon"
+        },
+        {
+          "command": "mc-mod-utility.newMawAddon"
+        },
+        {
+          "command": "mc-mod-utility.mawRebrand",
+          "when": "mcModUtility.isMawAddon"
+        },
+        {
+          "command": "mc-mod-utility.mawRefresh",
+          "when": "mcModUtility.isMawAddon"
+        },
+        {
+          "command": "mc-mod-utility.mawShowSource",
+          "when": "mcModUtility.isMawAddon"
         }
       ]
     },
@@ -143,6 +239,11 @@
           "type": "string",
           "default": "minecraft",
           "description": "RCON server password"
+        },
+        "mc-mod-utility.maw.templatePath": {
+          "type": "string",
+          "default": "",
+          "description": "MAW アドオンを新規作成するときに雛形として使うローカルプロジェクトのパス。空なら GitHub のテンプレートか、今開いているアドオンを使う。"
         }
       }
     }

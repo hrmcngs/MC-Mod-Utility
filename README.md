@@ -134,6 +134,85 @@ public static float SCALE = 0.8f;       // 表示サイズ
 
 独自のプロジェクト構造を使っている場合は `searchPatterns` にパスを追加してください。
 
+---
+
+## 4. MAW アドオン支援 — 「The four primitives and Weapons」のアドオンを作る
+
+本体MOD [The four primitives and Weapons](https://github.com/Drowse-Lab/The-four-primitives-and-Weapons)（以下 MAW）のアドオン開発を、**JSON の書き方を覚えなくても** できるようにする機能群です。
+
+### 自動認識
+
+開いたプロジェクトが MAW アドオンだと判定されると、専用の UI が有効になります。判定材料は次のどれか 1 つでも当たれば OK:
+
+| 材料 | 説明 |
+|---|---|
+| `.maw-addon.json` | この拡張機能が作った / リブランドしたアドオンの目印 |
+| `META-INF/mods.toml` | 本体MOD (`the_four_primitives_and_weapons`) への依存が書いてある |
+| `data/<ns>/weapon_types/` `maw_saya/` | MAW のデータ駆動ディレクトリがある |
+| `build.gradle` | 本体MOD jar を参照している |
+
+認識されると:
+
+- ステータスバーに `⚔ MAW: <modId>` が出る（クリックで武器スタジオ）
+- エクスプローラーに **「MAW アドオン」ビュー** が出る — その addon が今宣言している武器 / 武器タイプ / 納刀の一覧。武器タイプ未登録の武器には ⚠ が付く（＝スキルが使えない状態なので気づける）
+- Mod ID がサンプルのまま (`the_four_primitives_and_weapons_addons_sample`) だと警告表示
+
+### ⚔ 武器スタジオ（`MAW: 武器スタジオを開く`）
+
+フォームを埋めるだけで、武器 1 つに必要な **6〜8 ファイルをまとめて生成・追記**します。
+
+```
+きほん      名前 / アイテムID / 武器タイプ（新規タイプも作れる）
+つよさ      攻撃力・攻撃速度・耐久・エンチャント性・レア度（スライダー）
+みため      刃と柄の色を選ぶ → 16x16 のテクスチャを自動生成（プレビュー付き）
+こうげき    ブロックを ON にすると、そのぶん Java コードが組み上がる
+            └ 背後から攻撃で追加ダメージ / 吸血 / 炎上 / 状態異常 /
+              落雷 / 範囲攻撃 / メッセージ表示 / 右クリックで自己強化
+さや        本体MOD の鞘モデルを継承して納刀対応
+```
+
+生成/追記されるもの:
+
+| ファイル | 内容 |
+|---|---|
+| `item/<Name>Item.java` | アイテム本体（選んだブロックが `hurtEnemy` に展開される） |
+| `init/AddonItems.java` | `RegistryObject` の登録行と import を**追記** |
+| `models/item/<id>.json` | アイテムモデル |
+| `textures/item/<id>.png` | 16x16 プレースホルダーテクスチャ |
+| `lang/ja_jp.json` `en_us.json` | 表示名 |
+| `data/<ns>/weapon_types/weapons.json` | 武器タイプ登録（これがないと K キーのスキルが使えない） |
+| `data/<ns>/weapon_stats/weapons.json` | ステータス上書き（任意） |
+| `data/<ns>/maw_saya/saya.jsonc` + 鞘モデル | 納刀対応（任意） |
+
+既存ファイルは**上書きせずテキストを差し込む**ので、コメントも整形も壊れません。右側のペインに、生成される内容がリアルタイムでプレビューされます。
+
+### 本体MOD の情報を動的に読む
+
+武器タイプやモーションID（`thrust` / `spin_slash` / `dodge` …）、鞘の種類、継承できる鞘モデルの一覧は、拡張機能にハードコードせず **本体MOD から直接読みます**。読み込み順:
+
+1. `gradle.properties` の `mawSourceProject`
+2. 環境変数 `MAW_DIR`
+3. `~/The-four-primitives-and-Weapons`
+4. アドオン内の `.maw-src/`
+5. アドオン内の `libs/local/.../*.jar`（jar から直接読む）
+6. どれも無ければ内蔵スナップショット
+
+本体MOD が武器タイプを追加しても、拡張機能を更新せずに追従します。読み込み元は `MAW: 本体MODの読み込み元を表示` で確認できます。
+
+### その他のコマンド
+
+| コマンド | 説明 |
+|---|---|
+| `MAW: アドオンを新規作成` | サンプルテンプレートを複製し、Mod ID / パッケージ / 作者を一括で書き換えて新規アドオンを作る（gradlew・CI・本体jar取得スクリプト込み） |
+| `MAW: Mod ID を変更 (リブランド)` | サンプルのままのプロジェクトを自分の MOD に作り替える。テキスト置換だけでなく **Java パッケージ / `assets/` / `data/` のフォルダ名まで移動**する |
+| `MAW: 情報を再読み込み` | 本体MOD のカタログとアドオンの状態を読み直す |
+
+### 設定 (settings.json)
+
+| 設定キー | デフォルト | 説明 |
+|---|---|---|
+| `mc-mod-utility.maw.templatePath` | `""` | 新規作成時に雛形にするローカルプロジェクトのパス |
+
 ## 開発・デバッグ
 
 1. このプロジェクトを VSCode で開く

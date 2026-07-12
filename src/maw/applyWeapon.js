@@ -110,7 +110,7 @@ function computeChanges(project, spec) {
         const stats = generateStatsEntry(spec);
         if (Object.keys(stats).length > 0) {
             try {
-                changes.push(patchWeaponStats(project, itemRef, stats, spec));
+                changes.push(patchWeaponStats(project, itemRef, stats));
             } catch (e) {
                 errors.push(`weapon_stats の更新に失敗: ${e.message}`);
             }
@@ -265,7 +265,7 @@ function appendItemToExistingType(file, text, typeId, itemRef, spec) {
 }
 
 /** weapon_stats/weapons.json に item 別のステータス上書きを追記 */
-function patchWeaponStats(project, itemRef, stats, spec) {
+function patchWeaponStats(project, itemRef, stats) {
     const file = project.paths.weaponStats;
     const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : emptyWeaponStats();
 
@@ -273,8 +273,10 @@ function patchWeaponStats(project, itemRef, stats, spec) {
         throw new Error(`${itemRef} は既に weapon_stats に登録されています`);
     }
 
+    // weapon_stats のローダー (WeaponStatsRegistry) はコメント除去をせず、
+    // パース例外を握り潰す作りなので、ここには // コメントを入れない。
     const json = JSON.stringify(stats);
-    const updated = insertIntoBlock(text, 'weapons', itemRef, json, `${spec.displayNameJa} のステータス`);
+    const updated = insertIntoBlock(text, 'weapons', itemRef, json);
     return {
         file,
         action: fs.existsSync(file) ? 'append' : 'create',
