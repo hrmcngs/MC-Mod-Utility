@@ -4,6 +4,7 @@ const { MawTreeProvider } = require('../maw/mawTreeView');
 const { handleWeaponStudio } = require('../maw/weaponStudio');
 const { handleRebrand } = require('../maw/rebrand');
 const { handleNewMawAddon } = require('../maw/scaffold');
+const { handleInsertModel } = require('../maw/insertModel');
 const { loadCatalog, clearCache, resolveMawSource } = require('../maw/mawCatalog');
 
 // =====================================================================
@@ -32,6 +33,9 @@ function registerMawAddon(context) {
 
         vscode.commands.registerCommand('mc-mod-utility.mawWeaponStudio', (uri) =>
             handleWeaponStudio(context, uri, () => refresh())),
+
+        vscode.commands.registerCommand('mc-mod-utility.mawInsertModel', (uri) =>
+            handleInsertModel(context, uri, () => refresh())),
 
         vscode.commands.registerCommand('mc-mod-utility.mawRebrand', (uri) =>
             handleRebrand(context, uri, () => refresh())),

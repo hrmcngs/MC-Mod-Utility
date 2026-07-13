@@ -149,6 +149,9 @@ const DEFAULT_CATALOG = {
     slotLabels: SLOT_LABELS,
     sayaTypes: SAYA_TYPES,
     typeToSaya: TYPE_TO_SAYA,
+    // 3Dモデルは本体MODの実物を読まないと分からないので、フォールバックでは空にする
+    // (武器スタジオでは「平面モデル」だけが選べる状態になる)
+    models: { weaponBases: [], itemModels: [] },
 };
 
 module.exports = {

@@ -97,7 +97,7 @@ function findLocalJar(addonRoot) {
 
 /**
  * 本体MOD からファイルを読むリーダーを作る
- * @returns {{ readText(rel: string): string|null, listDir(rel: string): string[] }}
+ * @returns {{ readText(rel): string|null, readBuffer(rel): Buffer|null, listDir(rel): string[], listTree(rel): string[] }}
  */
 function createReader(source) {
     if (source.kind === 'source') {
@@ -107,10 +107,32 @@ function createReader(source) {
                 const p = path.join(base, rel);
                 return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null;
             },
+            readBuffer(rel) {
+                const p = path.join(base, rel);
+                return fs.existsSync(p) ? fs.readFileSync(p) : null;
+            },
             listDir(rel) {
                 const p = path.join(base, rel);
                 if (!fs.existsSync(p)) return [];
                 return fs.readdirSync(p).filter(f => f.endsWith('.json'));
+            },
+            listTree(rel) {
+                const root = path.join(base, rel);
+                const out = [];
+                (function walk(dir, prefix) {
+                    let entries;
+                    try {
+                        entries = fs.readdirSync(dir, { withFileTypes: true });
+                    } catch {
+                        return;
+                    }
+                    for (const e of entries) {
+                        const child = prefix ? `${prefix}/${e.name}` : e.name;
+                        if (e.isDirectory()) walk(path.join(dir, e.name), child);
+                        else if (e.name.endsWith('.json')) out.push(child);
+                    }
+                })(root, '');
+                return out;
             },
         };
     }
@@ -122,13 +144,38 @@ function createReader(source) {
         readText(rel) {
             return jar.readText(rel);
         },
+        readBuffer(rel) {
+            return jar.read(rel);
+        },
         listDir(rel) {
             const prefix = rel.endsWith('/') ? rel : rel + '/';
             return names
                 .filter(n => n.startsWith(prefix) && n.endsWith('.json') && !n.slice(prefix.length).includes('/'))
                 .map(n => n.slice(prefix.length));
         },
+        listTree(rel) {
+            const prefix = rel.endsWith('/') ? rel : rel + '/';
+            return names
+                .filter(n => n.startsWith(prefix) && n.endsWith('.json'))
+                .map(n => n.slice(prefix.length));
+        },
     };
+}
+
+/**
+ * 本体MOD からファイルを読むリーダーを外部に渡す
+ * (3Dモデルの elements やテクスチャ PNG をアドオンにコピーするために使う)
+ * @param {string} addonRoot
+ * @returns {ReturnType<typeof createReader>|null}
+ */
+function createMawReader(addonRoot) {
+    const source = resolveMawSource(addonRoot);
+    if (!source) return null;
+    try {
+        return createReader(source);
+    } catch {
+        return null;
+    }
 }
 
 /** JSON/JSONC を安全に読む (失敗したら null) */
@@ -243,10 +290,13 @@ function buildCatalog(reader, source) {
     const sayaKeys = saya ? realEntries(saya).map(([k]) => k) : SAYA_TYPES.map(s => s.id);
     const sayaTypes = sayaKeys.map(id => {
         const fallback = SAYA_TYPES.find(s => s.id === id);
-        const models = reader
-            .listDir(`${ASSET_DIR}/models/custom/saya/${id}`)
-            .filter(f => !f.startsWith('_'))
-            .map(f => f.replace(/\.json$/, ''));
+        // 鉄の鞘を先頭に (サンプルとして一番使いやすいので既定にする)
+        const models = sortIronFirst(
+            reader
+                .listDir(`${ASSET_DIR}/models/custom/saya/${id}`)
+                .filter(f => !f.startsWith('_'))
+                .map(f => f.replace(/\.json$/, ''))
+        );
         return {
             id,
             label: fallback ? fallback.label : `${id} の鞘`,
@@ -262,6 +312,163 @@ function buildCatalog(reader, source) {
         slotLabels: SLOT_LABELS,
         sayaTypes,
         typeToSaya: TYPE_TO_SAYA,
+        models: buildModelCatalog(reader),
+    };
+}
+
+// ---------------------------------------------------------------------
+// 3D モデルのカタログ
+//
+// 本体MOD のモデルは 3 段構成:
+//   1. 3Dベース   custom/weapon/<種類>/<名前>_parent.json  … 形 (elements) と持ち方 (display)
+//   2. 中間モデル  custom/<名前>.json                       … ベースを継承しテクスチャを割り当て
+//   3. アイテム    item/<名前>.json                         … 中間モデルを継承
+//
+// アドオンは 1 か 2 を parent 継承するだけで 3D 武器が作れる。
+// ここではベースの一覧と、それぞれのテクスチャスロット (#0 #1 …) が
+// 「刃」なのか「鍔」なのかを、本体の既存武器の割り当てから逆算して集める。
+// ---------------------------------------------------------------------
+
+/** テクスチャパスの一部から、そのスロットの意味を推定する */
+const SLOT_HINTS = {
+    blade: '刃',
+    tsuba: '鍔（つば）',
+    tuba: '鍔（つば）',
+    tsuka: '柄（つか）',
+    tuka: '柄（つか）',
+    kasira: '柄頭（かしら）',
+    grip: 'グリップ',
+    guard: 'ガード',
+    pommel: '柄頭',
+    handle: '持ち手',
+    saya: '鞘',
+};
+
+/** テクスチャパスから「刃 / 鍔 / …」を当てる。当たったパス片も返す (ファイル名に使う) */
+function slotHintFromTexture(texturePath) {
+    if (!texturePath) return null;
+    const segs = texturePath.split(':').pop().split('/');
+    for (const s of segs) {
+        if (SLOT_HINTS[s]) return { name: s, label: SLOT_HINTS[s] };
+    }
+    return null;
+}
+
+/** 鉄 (iron) のものを先頭に並べ替える — サンプルの基準にするため */
+function sortIronFirst(names) {
+    return [...names].sort((a, b) => {
+        const ai = /iron/i.test(a) ? 0 : 1;
+        const bi = /iron/i.test(b) ? 0 : 1;
+        return ai - bi || a.localeCompare(b);
+    });
+}
+
+/** モデルが使うテクスチャスロット (#0 など) を集める */
+function modelSlots(json) {
+    const slots = new Set(Object.keys(json.textures || {}).filter(k => k !== 'particle'));
+    for (const el of json.elements || []) {
+        for (const face of Object.values(el.faces || {})) {
+            if (typeof face.texture === 'string' && face.texture.startsWith('#')) {
+                slots.add(face.texture.slice(1));
+            }
+        }
+    }
+    return [...slots].sort();
+}
+
+function buildModelCatalog(reader) {
+    const modelDir = `${ASSET_DIR}/models`;
+
+    // --- 3Dベース ---
+    const bases = new Map();
+    for (const rel of reader.listTree(`${modelDir}/custom/weapon`)) {
+        const json = readJson(reader, `${modelDir}/custom/weapon/${rel}`);
+        if (!json) continue;
+
+        const parts = rel.replace(/\.json$/, '').split('/');
+        const name = parts.pop();
+        const type = parts.pop() || 'other';
+        const id = `custom/weapon/${type}/${name}`;
+
+        bases.set(id, {
+            id,
+            type,
+            name,
+            slots: modelSlots(json),
+            elements: (json.elements || []).length,
+            ownTextures: { ...(json.textures || {}) },  // ベース自身が持つ既定テクスチャ
+            exampleTextures: {},                        // 実際の武器 (鉄を優先) から拾った実例
+            examples: [],
+        });
+    }
+
+    // --- 中間モデル (ベース → テクスチャ割り当て) ---
+    const intermediates = new Map();
+    for (const f of reader.listDir(`${modelDir}/custom`)) {
+        const json = readJson(reader, `${modelDir}/custom/${f}`);
+        if (!json) continue;
+        intermediates.set(`custom/${f.replace(/\.json$/, '')}`, {
+            parent: (json.parent || '').split(':').pop(),
+            textures: json.textures || {},
+        });
+    }
+
+    // --- アイテムモデル (3D を参照しているものだけ) ---
+    // iron_* を先に処理する: 3Dベースの「テクスチャの実例」として鉄の武器を基準にしたいため。
+    // (鉄は刃・鍔・柄・柄頭がひと通り揃っていて、色も無難でサンプルに向く)
+    const itemModels = [];
+    for (const f of sortIronFirst(reader.listDir(`${modelDir}/item`))) {
+        const json = readJson(reader, `${modelDir}/item/${f}`);
+        if (!json) continue;
+
+        const parent = (json.parent || '').split(':').pop();
+        if (!parent.startsWith('custom/')) continue;
+
+        const name = f.replace(/\.json$/, '');
+
+        // このアイテムがどの 3Dベースに行き着くか辿り、テクスチャの実例を拾う
+        const inter = intermediates.get(parent);
+        const basePath = bases.has(parent) ? parent : (inter ? inter.parent : null);
+        const base = basePath && bases.get(basePath);
+
+        // 3Dベースに行き着くものは「武器」として上位に出す
+        // (盾・壺・矢なども item/ にあるが、武器の見た目として借りる用途ではない)
+        itemModels.push({
+            id: name,
+            parent: `${MAW_MODID}:${parent}`,
+            weapon: !!base,
+            weaponType: base ? base.type : null,
+        });
+
+        if (!base) continue;
+
+        base.examples.push(name);
+        const textures = { ...(inter ? inter.textures : {}), ...(json.textures || {}) };
+        for (const [slot, tex] of Object.entries(textures)) {
+            if (!base.exampleTextures[slot]) base.exampleTextures[slot] = tex;
+        }
+    }
+
+    // スロットに日本語ラベルとファイル名を付ける
+    // (テクスチャの実例は 鉄の武器 > ベース既定 の順で採用する)
+    const weaponBases = [...bases.values()].map(b => ({
+        ...b,
+        slots: b.slots.map(slot => {
+            const example = b.exampleTextures[slot] || b.ownTextures[slot] || null;
+            const hint = slotHintFromTexture(example);
+            return {
+                key: slot,
+                name: hint ? hint.name : `part_${slot}`,
+                label: hint ? hint.label : `パーツ #${slot}`,
+                example,
+            };
+        }),
+    }));
+
+    return {
+        weaponBases: weaponBases.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name)),
+        itemModels: itemModels.sort((a, b) =>
+            (b.weapon ? 1 : 0) - (a.weapon ? 1 : 0) || a.id.localeCompare(b.id)),
     };
 }
 
@@ -270,4 +477,4 @@ function clearCache() {
     cache.clear();
 }
 
-module.exports = { loadCatalog, resolveMawSource, clearCache, MAW_MODID };
+module.exports = { loadCatalog, resolveMawSource, createMawReader, clearCache, MAW_MODID };

@@ -1,12 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { insertIntoBlock, insertIntoArray, findBlock, blockHasKey, parseJsonc } = require('../util/jsonc');
-const { generateWeaponTexture } = require('./textureGen');
-const { MAW_MODID } = require('./mawDefaults');
+const { loadCatalog, createMawReader } = require('./mawCatalog');
+const { buildModelChanges, buildSayaChanges } = require('./modelTemplates');
 const {
     generateItemJava,
-    generateItemModel,
-    generateSayaModel,
     generateRegistryEntry,
     generateNewTypeDefinition,
     generateStatsEntry,
@@ -29,16 +27,17 @@ const {
  */
 function computeChanges(project, spec) {
     const errors = [];
+    const warnings = [];
     const changes = [];
     const ctx = { basePackage: project.basePackage, modId: project.namespace };
 
     if (!project.basePackage) {
         errors.push('@Mod が付いたメインクラスが見つかりません。Java のパッケージ構成を確認してください。');
-        return { changes, errors };
+        return { changes, errors, warnings };
     }
     if (project.weapons.some(w => w.id === spec.itemId)) {
         errors.push(`アイテム ID "${spec.itemId}" は既に登録されています。別の ID にしてください。`);
-        return { changes, errors };
+        return { changes, errors, warnings };
     }
 
     const itemRef = `${project.namespace}:${spec.itemId}`;
@@ -52,7 +51,7 @@ function computeChanges(project, spec) {
     );
     if (fs.existsSync(javaFile)) {
         errors.push(`${className(spec)}.java は既に存在します。`);
-        return { changes, errors };
+        return { changes, errors, warnings };
     }
     changes.push({
         file: javaFile,
@@ -69,29 +68,15 @@ function computeChanges(project, spec) {
         errors.push('DeferredRegister<Item> を持つ登録クラス (AddonItems 等) が見つかりません。');
     }
 
-    // --- 3. アイテムモデル ---
-    changes.push({
-        file: path.join(project.paths.itemModels, `${spec.itemId}.json`),
-        action: 'create',
-        title: 'アイテムモデル',
-        content: generateItemModel(spec, ctx),
-    });
-
-    // --- 4. テクスチャ (プレースホルダー) ---
-    const texFile = path.join(project.paths.itemTextures, `${spec.itemId}.png`);
-    if (spec.texture && spec.texture.generate && !fs.existsSync(texFile)) {
-        changes.push({
-            file: texFile,
-            action: 'create-binary',
-            title: 'テクスチャ (16x16 プレースホルダー)',
-            buffer: generateWeaponTexture({
-                weaponType: spec.weaponType === '__new__' ? (spec.newType.baseShape || 'sword') : spec.weaponType,
-                bladeColor: spec.texture.bladeColor,
-                handleColor: spec.texture.handleColor,
-            }),
-            content: '(16x16 の PNG を生成します。あとから自分の絵に差し替えてください)',
-        });
-    }
+    // --- 3-4. アイテムモデル + テクスチャ (平面 / 3D継承 / 3Dベース / 3D複製) ---
+    const model = buildModelChanges(
+        project,
+        spec,
+        loadCatalog(project.root),
+        createMawReader(project.root)
+    );
+    changes.push(...model.changes);
+    warnings.push(...model.warnings);
 
     // --- 5. lang (日本語 / 英語) ---
     const key = langKey(spec, ctx);
@@ -123,18 +108,17 @@ function computeChanges(project, spec) {
         const modelRef = `${project.namespace}:custom/saya/${spec.saya.type}/${modelName}`;
         try {
             changes.push(patchSaya(project, spec, itemRef, modelRef));
-            changes.push({
-                file: path.join(project.paths.sayaModels, spec.saya.type, `${modelName}.json`),
-                action: 'create',
-                title: '鞘モデル',
-                content: generateSayaModel(spec, MAW_MODID),
-            });
+
+            // 鞘モデル + 鞘/刃/鍔/柄/柄頭 のテクスチャを本体から複製する
+            const saya = buildSayaChanges(project, spec, createMawReader(project.root));
+            changes.push(...saya.changes);
+            warnings.push(...saya.warnings);
         } catch (e) {
             errors.push(`鞘の登録に失敗: ${e.message}`);
         }
     }
 
-    return { changes: changes.filter(Boolean), errors };
+    return { changes: changes.filter(Boolean), errors, warnings };
 }
 
 // ---------------------------------------------------------------------

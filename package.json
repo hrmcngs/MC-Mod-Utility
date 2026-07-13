@@ -2,7 +2,7 @@
   "name": "mc-mod-utility",
   "displayName": "MC Mod Utility",
   "description": "Scaffold Minecraft mod projects and add components for Forge, Fabric, and NeoForge",
-  "version": "0.2.3",
+  "version": "0.3.1",
   "publisher": "MC-Mod-Utility",
   "repository": {
     "type": "git",
@@ -74,6 +74,13 @@
         "icon": "$(new-folder)"
       },
       {
+        "command": "mc-mod-utility.mawInsertModel",
+        "title": "MAW: 3Dモデルテンプレートを挿入",
+        "category": "MC Mod Utility",
+        "shortTitle": "3Dモデル",
+        "icon": "$(symbol-namespace)"
+      },
+      {
         "command": "mc-mod-utility.mawRebrand",
         "title": "MAW: Mod ID を変更 (リブランド)",
         "category": "MC Mod Utility",
@@ -134,6 +141,11 @@
           "command": "mc-mod-utility.newMawAddon",
           "when": "explorerResourceIsFolder",
           "group": "mcModUtility@6"
+        },
+        {
+          "command": "mc-mod-utility.mawInsertModel",
+          "when": "explorerResourceIsFolder && mcModUtility.isMawAddon",
+          "group": "mcModUtility@7"
         }
       ],
       "view/title": [
@@ -143,14 +155,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "mc-mod-utility.mawRefresh",
+          "command": "mc-mod-utility.mawInsertModel",
           "when": "view == mcModUtility.mawAddon",
           "group": "navigation@2"
         },
         {
-          "command": "mc-mod-utility.mawShowSource",
+          "command": "mc-mod-utility.mawRefresh",
           "when": "view == mcModUtility.mawAddon",
           "group": "navigation@3"
+        },
+        {
+          "command": "mc-mod-utility.mawShowSource",
+          "when": "view == mcModUtility.mawAddon",
+          "group": "navigation@4"
         },
         {
           "command": "mc-mod-utility.mawRebrand",
@@ -196,6 +213,10 @@
         },
         {
           "command": "mc-mod-utility.mawShowSource",
+          "when": "mcModUtility.isMawAddon"
+        },
+        {
+          "command": "mc-mod-utility.mawInsertModel",
           "when": "mcModUtility.isMawAddon"
         }
       ]

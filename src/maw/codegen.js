@@ -306,22 +306,6 @@ function buildUseMethod(spec, imports) {
 // リソース
 // ---------------------------------------------------------------------
 
-/** アイテムモデル (parent: item/handheld) */
-function generateItemModel(spec, ctx) {
-    return JSON.stringify({
-        parent: 'item/handheld',
-        textures: { layer0: `${ctx.modId}:item/${spec.itemId}` },
-    }, null, 2) + '\n';
-}
-
-/** 鞘モデル (本体MODのモデルを parent 継承するだけ) */
-function generateSayaModel(spec, mawModid) {
-    return JSON.stringify({
-        _comment: '本体MOD の鞘モデルを継承。独自の3Dモデルにしたい場合は Blockbench で作った elements に差し替える。',
-        parent: `${mawModid}:custom/saya/${spec.saya.type}/${spec.saya.parent}`,
-    }, null, 2) + '\n';
-}
-
 /** lang のキー */
 function langKey(spec, ctx) {
     return `item.${ctx.modId}.${spec.itemId}`;
@@ -413,8 +397,6 @@ module.exports = {
     BUFFS,
     RARITIES,
     generateItemJava,
-    generateItemModel,
-    generateSayaModel,
     generateRegistryEntry,
     generateNewTypeDefinition,
     generateStatsEntry,

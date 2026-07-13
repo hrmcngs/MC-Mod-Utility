@@ -64,6 +64,7 @@ async function handleWeaponStudio(context, uri, onCreated) {
                     slotLabels: catalog.slotLabels,
                     sayaTypes: catalog.sayaTypes,
                     typeToSaya: catalog.typeToSaya,
+                    models: catalog.models,
                     shapes: SHAPES,
                     options: { particles: PARTICLES, sounds: SOUNDS, effects: EFFECTS, buffs: BUFFS, rarities: RARITIES },
                 },
@@ -105,7 +106,7 @@ async function handleWeaponStudio(context, uri, onCreated) {
 
 /** プレビュー用に、変更されるファイル一覧を組み立てる */
 function buildPreview(project, spec) {
-    const { changes, errors } = computeChanges(project, spec);
+    const { changes, errors, warnings } = computeChanges(project, spec);
 
     const files = changes.map(c => ({
         rel: path.relative(project.root, c.file),
@@ -115,7 +116,7 @@ function buildPreview(project, spec) {
         lang: c.file.endsWith('.java') ? 'java' : c.file.endsWith('.png') ? 'text' : 'json',
     }));
 
-    return { files, errors };
+    return { files, errors, warnings };
 }
 
 // ---------------------------------------------------------------------
@@ -343,21 +344,39 @@ function renderHtml() {
 
         <!-- 見た目 -->
         <section class="cat look">
-            <header>🟪 みため</header>
+            <header>🟪 みため（モデル）</header>
             <div class="body">
                 <div class="row">
-                    <label class="chk">
-                        <input type="checkbox" id="genTexture" checked />
-                        <span>テクスチャを自動生成する（16x16 PNG）</span>
-                    </label>
+                    <label class="name">モデル方式</label>
+                    <select id="modelMode">
+                        <option value="2d">平面（16x16 の絵をそのまま持つ）</option>
+                        <option value="inherit">3D・本体の武器の見た目をそのまま使う</option>
+                        <option value="base3d">3D・本体の形を使い、テクスチャは自分のもの</option>
+                        <option value="copy">3D・本体の形ごとコピーして自分で改造する</option>
+                    </select>
+                    <div class="hint" id="modelHint"></div>
                 </div>
-                <div class="row">
-                    <label class="name">刃の色</label>
-                    <input type="color" id="bladeColor" value="#d9dde8" />
-                    <label class="name" style="flex:0 0 auto">柄の色</label>
-                    <input type="color" id="handleColor" value="#6b4a2b" />
-                    <canvas id="texPreview" width="16" height="16" style="width:64px;height:64px;margin-left:12px"></canvas>
-                    <div class="hint">あとから自分の絵に描き替えて OK。まずは色だけ決めて動かしてみるのが早い。</div>
+                <div class="row" id="modelSourceRow" style="display:none">
+                    <label class="name">元にするモデル</label>
+                    <select id="modelSource" style="min-width:280px"></select>
+                    <div class="hint" id="modelSlotHint"></div>
+                </div>
+
+                <div id="flatBox">
+                    <div class="row">
+                        <label class="chk">
+                            <input type="checkbox" id="genTexture" checked />
+                            <span>テクスチャを自動生成する（16x16 PNG）</span>
+                        </label>
+                    </div>
+                    <div class="row">
+                        <label class="name">刃の色</label>
+                        <input type="color" id="bladeColor" value="#d9dde8" />
+                        <label class="name" style="flex:0 0 auto">柄の色</label>
+                        <input type="color" id="handleColor" value="#6b4a2b" />
+                        <canvas id="texPreview" width="16" height="16" style="width:64px;height:64px;margin-left:12px"></canvas>
+                        <div class="hint">あとから自分の絵に描き替えて OK。まずは色だけ決めて動かしてみるのが早い。</div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -457,7 +476,7 @@ const $ = (id) => document.getElementById(id);
 window.addEventListener('message', (e) => {
     const msg = e.data;
     if (msg.type === 'init') { DATA = msg.data; build(); }
-    else if (msg.type === 'preview') { renderPreview(msg.files, msg.errors); }
+    else if (msg.type === 'preview') { renderPreview(msg.files, msg.errors, msg.warnings); }
     else if (msg.type === 'created') { $('status').textContent = msg.count + ' ファイルを生成しました'; }
 });
 
@@ -542,6 +561,17 @@ function build() {
         box.appendChild(el);
     }
 
+    // モデル方式 (本体MODが読めない環境では 3D の選択肢を消す)
+    const hasModels = DATA.models && DATA.models.weaponBases.length > 0;
+    if (!hasModels) {
+        for (const opt of [...$('modelMode').options]) {
+            if (opt.value !== '2d') opt.disabled = true;
+        }
+        $('modelHint').textContent = '本体MOD が見つからないため、3D モデルは選べません（scripts/fetch-maw-jar.sh で jar を取り込むと選べるようになります）。';
+    }
+    $('modelMode').addEventListener('change', () => { updateModelSources(); onChange(); });
+    $('modelSource').addEventListener('change', () => { updateSlotHint(); preview(); });
+
     // イベント配線
     for (const id of ['nameJa', 'nameEn', 'itemId', 'weaponType', 'newTypeId', 'newTypeName',
         'damage', 'attackSpeed', 'durability', 'enchantability', 'rarity', 'overrideStats',
@@ -613,6 +643,79 @@ function fillSelect(el, list, def) {
     if (list.some(o => o.id === def)) el.value = def;
 }
 
+const MODEL_HINTS = {
+    '2d': '一番かんたん。16x16 の絵をそのまま手に持つ（バニラの剣と同じ方式）。',
+    inherit: '本体MOD の武器と同じ 3D モデル・テクスチャを借りる。parent を 1 行書くだけで完成。',
+    base3d: '本体の 3D の形はそのまま、テクスチャだけ自分のものにする。本体のテクスチャをコピーしてくるので、それを塗り替えれば自分の武器になる。',
+    copy: '3D モデル（elements）ごとアドオンに複製する。Blockbench で開いて形から作り替えられる。',
+};
+
+/** 武器タイプ → 3Dベースの種類 */
+const TYPE_TO_BASE = {
+    katana: 'katana', straight_sword: 'tyokuto', sword: 'sword', nata: 'sword',
+    greatsword: 'sword', small_sword: 'dagger', dagger: 'dagger', rapier: 'rapier',
+    throwing: 'throwing_knife',
+};
+
+function updateModelSources() {
+    const mode = $('modelMode').value;
+    const models = DATA.models || { weaponBases: [], itemModels: [] };
+
+    $('modelHint').textContent = MODEL_HINTS[mode] || '';
+    $('flatBox').style.display = mode === '2d' ? 'block' : 'none';
+    $('modelSourceRow').style.display = mode === '2d' ? 'none' : 'flex';
+    if (mode === '2d') { $('modelSlotHint').textContent = ''; return; }
+
+    const sel = $('modelSource');
+    const prev = sel.value;
+    sel.innerHTML = '';
+
+    if (mode === 'inherit') {
+        const weapons = models.itemModels.filter(m => m.weapon);
+        const others = models.itemModels.filter(m => !m.weapon);
+        const group = (label, list) => {
+            if (list.length === 0) return;
+            const g = document.createElement('optgroup');
+            g.label = label;
+            for (const m of list) {
+                const o = document.createElement('option');
+                o.value = m.id;
+                o.textContent = m.weaponType ? m.id + '（' + m.weaponType + '）' : m.id;
+                g.appendChild(o);
+            }
+            sel.appendChild(g);
+        };
+        group('武器（3Dモデル）', weapons);
+        group('その他（盾・装飾など）', others);
+    } else {
+        for (const b of models.weaponBases) {
+            const o = document.createElement('option');
+            o.value = b.id;
+            o.textContent = b.type + ' / ' + b.name + '（パーツ ' + b.elements + ' 個）';
+            sel.appendChild(o);
+        }
+        // 選んでいる武器タイプに近いベースを初期選択する
+        const want = TYPE_TO_BASE[$('weaponType').value];
+        const match = models.weaponBases.find(b => b.type === want);
+        if (match) sel.value = match.id;
+    }
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+
+    updateSlotHint();
+}
+
+function updateSlotHint() {
+    const mode = $('modelMode').value;
+    const models = DATA.models || { weaponBases: [] };
+    if (mode !== 'base3d' && mode !== 'copy') { $('modelSlotHint').textContent = ''; return; }
+
+    const b = models.weaponBases.find(x => x.id === $('modelSource').value);
+    if (!b) return;
+    $('modelSlotHint').textContent =
+        'テクスチャのパーツ: ' + b.slots.map(s => '#' + s.key + ' ' + s.label).join(' / ') +
+        '（本体のテクスチャをアドオンにコピーするので、それを塗り替えれば自分の見た目になる）';
+}
+
 function updateSayaParents() {
     const t = DATA.sayaTypes.find(s => s.id === $('sayaType').value) || DATA.sayaTypes[0];
     if (!t) return;
@@ -639,6 +742,8 @@ function onChange() {
         $('sayaType').value = DATA.typeToSaya[type];
         updateSayaParents();
     }
+
+    updateModelSources();
 
     $('damageVal').textContent = (+$('damage').value).toFixed(1);
     const sp = +$('attackSpeed').value;
@@ -762,6 +867,10 @@ function collect() {
         },
         chance: +$('chance').value,
         blocks,
+        model: {
+            mode: $('modelMode').value,
+            source: $('modelSource').value,
+        },
         texture: {
             generate: $('genTexture').checked,
             bladeColor: $('bladeColor').value,
@@ -781,13 +890,20 @@ function preview() {
     timer = setTimeout(() => vscode.postMessage({ type: 'preview', spec: collect() }), 120);
 }
 
-function renderPreview(files, errors) {
+function renderPreview(files, errors, warnings) {
     const errBox = $('errors');
     errBox.innerHTML = '';
     for (const e of (errors || [])) {
         const d = document.createElement('div');
         d.className = 'err';
         d.textContent = '⚠ ' + e;
+        errBox.appendChild(d);
+    }
+    for (const w of (warnings || [])) {
+        const d = document.createElement('div');
+        d.className = 'err';
+        d.style.background = 'transparent';
+        d.textContent = 'ℹ ' + w;
         errBox.appendChild(d);
     }
     $('createBtn').disabled = (errors || []).length > 0;
