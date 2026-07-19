@@ -6,6 +6,7 @@ const { handleAddRotationParams } = require('./src/commands/addRotationParams');
 const { register: registerColorChips } = require('./src/commands/colorChips');
 const { handleThemeColorEditor } = require('./src/commands/themeColorEditor');
 const { registerMawAddon } = require('./src/commands/mawAddon');
+const { registerNyanCat } = require('./src/commands/nyanCat');
 
 /**
  * MODプロジェクトかどうかを判定してコンテキストを設定する
@@ -69,6 +70,9 @@ function activate(context) {
     // 「The four primitives and Weapons」のアドオン開発支援。
     // アドオンだと認識できたときだけ、武器スタジオ・専用ビュー・ステータスバーが有効になる。
     registerMawAddon(context);
+
+    // おまけ: サイドバーで nyan cat が飛ぶ webview ビュー。
+    registerNyanCat(context);
 }
 
 function deactivate() {}

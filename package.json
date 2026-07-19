@@ -107,6 +107,12 @@
           "id": "mcModUtility.mawAddon",
           "name": "MAW アドオン",
           "when": "mcModUtility.isMawAddon"
+        },
+        {
+          "type": "webview",
+          "id": "mcModUtility.nyanCat",
+          "name": "Nyan Cat",
+          "icon": "$(heart)"
         }
       ]
     },
