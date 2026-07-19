@@ -5,7 +5,8 @@ const vscode = require('vscode');
 //
 // サイドバー (エクスプローラー) に webview ビューを 1 枚出して、
 // レインボーを引きながら飛ぶ nyan cat をひたすら再生するだけの遊び。
-// 外部アセットは一切使わず、SVG + CSS アニメーションで完結させる。
+// 外部アセットもスクリプトも使わず、ドット絵を SVG の矩形に展開して
+// CSS アニメーションだけで動かす。
 // =====================================================================
 
 const VIEW_ID = 'mcModUtility.nyanCat';
@@ -33,9 +34,103 @@ function registerNyanCat(context) {
     );
 }
 
+// --- ドット絵の色パレット -------------------------------------------------
+const C = {
+    K: '#000000', // 輪郭・線
+    g: '#9d9d9d', // 猫のグレー
+    G: '#7c7c7c', // グレーの影
+    t: '#ffcc99', // ポップタルトの縁 (タン)
+    p: '#ffb3d9', // フロスティング (ピンク)
+    d: '#ff3d92', // タルトの粒々
+    c: '#ff8fb3', // ほっぺ
+    w: '#ffffff', // 目のハイライト
+    // レインボー6色
+    r1: '#ff1a1a', r2: '#ff9933', r3: '#ffff33', r4: '#33cc33', r5: '#3399ff', r6: '#6633ff',
+};
+
+const PX = 8; // 1ドットの大きさ
+
+/** ドット矩形を1つ返す */
+function dot(col, row, w, h, fill) {
+    return `<rect x="${col * PX}" y="${row * PX}" width="${w * PX}" height="${h * PX}" fill="${fill}"/>`;
+}
+
+/** 猫本体 (胴・顔・足・しっぽ) のドット絵を組み立てる */
+function buildCat() {
+    const s = [];
+
+    // しっぽ (左)
+    s.push(`<g id="tail">`);
+    s.push(dot(11, 10, 4, 1, C.K));
+    s.push(dot(11, 11, 4, 2, C.g));
+    s.push(dot(11, 13, 4, 1, C.K));
+    s.push(`</g>`);
+
+    // ポップタルト胴体: 黒枠 → タン縁 → ピンク中身
+    s.push(dot(14, 4, 13, 13, C.K));
+    s.push(dot(15, 5, 11, 11, C.t));
+    s.push(dot(16, 6, 9, 9, C.p));
+    // 粒々スプリンクル
+    [[17, 7], [20, 6], [23, 8], [18, 10], [21, 11], [24, 9], [19, 13], [22, 13]]
+        .forEach(([cx, cy]) => s.push(dot(cx, cy, 1, 1, C.d)));
+
+    // 足 (4本) — パタパタ動かすので個別グループ
+    const legX = [16, 19, 22, 25];
+    s.push(`<g id="legs">`);
+    legX.forEach((lx) => {
+        s.push(dot(lx, 17, 2, 2, C.g));
+        s.push(dot(lx, 19, 2, 1, C.K));
+    });
+    s.push(`</g>`);
+
+    // 顔 (グレー) 黒枠 → グレー
+    s.push(dot(26, 5, 9, 12, C.K));
+    s.push(dot(26, 6, 8, 10, C.g));
+    // 耳
+    s.push(dot(27, 3, 2, 3, C.K)); s.push(dot(27, 4, 2, 2, C.g));
+    s.push(dot(31, 3, 2, 3, C.K)); s.push(dot(31, 4, 2, 2, C.g));
+    // 目 (黒 + 白ハイライト)
+    s.push(dot(28, 9, 2, 3, C.K)); s.push(dot(28, 9, 1, 1, C.w));
+    s.push(dot(31, 9, 2, 3, C.K)); s.push(dot(31, 9, 1, 1, C.w));
+    // ほっぺ
+    s.push(dot(27, 11, 1, 2, C.c));
+    s.push(dot(33, 11, 1, 2, C.c));
+    // 口 (にっこり)
+    s.push(dot(29, 13, 3, 1, C.K));
+    s.push(dot(29, 12, 1, 1, C.K));
+    s.push(dot(31, 12, 1, 1, C.K));
+
+    return s.join('');
+}
+
+/** レインボー: 6色の帯を縦スライスに分割し、偶数/奇数列を上下に揺らして「うねり」を作る */
+function buildRainbow() {
+    const bands = [C.r1, C.r2, C.r3, C.r4, C.r5, C.r6]; // 上から
+    const startRow = 5;      // 帯の開始行
+    const bandH = 2;         // 1色あたり2ドット
+    const cols = 14;         // 横14ドット
+    const even = [];
+    const odd = [];
+    for (let cx = 0; cx < cols; cx++) {
+        const target = (cx % 2 === 0) ? even : odd;
+        bands.forEach((color, i) => {
+            const row = startRow + i * bandH;
+            // 上端・下端は少し伸ばして、揺れても背景が覗かないようにする
+            const h = bandH + (i === 0 ? 1 : 0) + (i === bands.length - 1 ? 1 : 0);
+            const r0 = row - (i === 0 ? 1 : 0);
+            target.push(dot(cx, r0, 1, h, color));
+        });
+    }
+    return `<g class="rb rbA">${even.join('')}</g><g class="rb rbB">${odd.join('')}</g>`;
+}
+
 /** @param {vscode.Webview} webview */
 function renderHtml(webview) {
     const csp = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource} data:;`;
+    const vbW = 36 * PX;
+    const vbH = 22 * PX;
+    const sprite = buildRainbow() + buildCat();
+
     return `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -45,7 +140,7 @@ function renderHtml(webview) {
 :root { color-scheme: light dark; }
 html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
 body {
-    background: #0b0a1a;
+    background: #0d2b5e;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -56,102 +151,48 @@ body {
     inset: 0;
     background-image:
         radial-gradient(1px 1px at 20px 30px, #fff, transparent),
-        radial-gradient(1px 1px at 80px 70px, #fff, transparent),
-        radial-gradient(2px 2px at 130px 20px, #fff, transparent),
+        radial-gradient(2px 2px at 80px 70px, #fff, transparent),
+        radial-gradient(1px 1px at 130px 20px, #fff, transparent),
         radial-gradient(1px 1px at 170px 90px, #fff, transparent),
-        radial-gradient(1px 1px at 50px 110px, #fff, transparent),
-        radial-gradient(2px 2px at 110px 130px, #fff, transparent);
+        radial-gradient(2px 2px at 50px 110px, #fff, transparent),
+        radial-gradient(1px 1px at 110px 140px, #fff, transparent);
     background-size: 200px 160px;
     background-repeat: repeat;
-    animation: stars 6s linear infinite;
-    opacity: 0.7;
+    animation: stars 5s linear infinite;
+    opacity: 0.85;
 }
 @keyframes stars { from { background-position: 0 0; } to { background-position: -200px 0; } }
 
 /* 上下にゆらゆら飛ぶ nyan cat 本体 */
 #nyan {
     position: relative;
-    width: 220px;
-    animation: bob 0.6s steps(2) infinite;
+    width: 88%;
+    max-width: 300px;
 }
+svg { display: block; width: 100%; height: auto; }
+#nyan { animation: bob 0.5s steps(2) infinite; }
 @keyframes bob { 0%,100% { transform: translateY(-4px); } 50% { transform: translateY(4px); } }
 
-svg { display: block; width: 100%; height: auto; }
+/* レインボーのうねり: 偶数列と奇数列を逆位相で上下させる */
+.rb { animation-duration: 0.4s; animation-timing-function: steps(1); animation-iteration-count: infinite; }
+.rbA { animation-name: wobbleA; }
+.rbB { animation-name: wobbleB; }
+@keyframes wobbleA { 0%,49% { transform: translateY(0); } 50%,100% { transform: translateY(6px); } }
+@keyframes wobbleB { 0%,49% { transform: translateY(6px); } 50%,100% { transform: translateY(0); } }
 
-/* レインボーの各セグメントを 1 コマずつずらして波打たせる */
-.rb { animation: rbwave 0.4s steps(1) infinite; }
-.rb:nth-child(1) { animation-delay: 0s; }
-.rb:nth-child(2) { animation-delay: 0.1s; }
-.rb:nth-child(3) { animation-delay: 0.2s; }
-.rb:nth-child(4) { animation-delay: 0.3s; }
-@keyframes rbwave { 0% { transform: translateY(0); } 50% { transform: translateY(6px); } 100% { transform: translateY(0); } }
-
-/* しっぽ・足パタパタ */
-#tail { transform-origin: 30px 62px; animation: tail 0.5s steps(2) infinite; }
-@keyframes tail { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
-#legs rect { animation: legs 0.4s steps(2) infinite; }
-@keyframes legs { 0%,100% { transform: translateY(0); } 50% { transform: translateY(2px); } }
+/* しっぽパタパタ */
+#tail { transform-origin: 120px 92px; animation: tail 0.5s steps(2) infinite; }
+@keyframes tail { 0%,100% { transform: rotate(-10deg); } 50% { transform: rotate(6deg); } }
+/* 足パタパタ */
+#legs { animation: legs 0.35s steps(2) infinite; }
+@keyframes legs { 0%,100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
 </style>
 </head>
 <body>
 <div id="sky"></div>
 <div id="nyan">
-<svg viewBox="0 0 220 120" shape-rendering="crispEdges">
-  <!-- レインボー (左へたなびく) -->
-  <g>
-    <g class="rb"><rect x="0"  y="46" width="26" height="7" fill="#ff0000"/><rect x="0"  y="53" width="26" height="7" fill="#ff9900"/><rect x="0"  y="60" width="26" height="7" fill="#ffff00"/><rect x="0"  y="67" width="26" height="7" fill="#33ff00"/><rect x="0"  y="74" width="26" height="7" fill="#0099ff"/><rect x="0"  y="81" width="26" height="7" fill="#6633ff"/></g>
-    <g class="rb"><rect x="26" y="46" width="26" height="7" fill="#ff0000"/><rect x="26" y="53" width="26" height="7" fill="#ff9900"/><rect x="26" y="60" width="26" height="7" fill="#ffff00"/><rect x="26" y="67" width="26" height="7" fill="#33ff00"/><rect x="26" y="74" width="26" height="7" fill="#0099ff"/><rect x="26" y="81" width="26" height="7" fill="#6633ff"/></g>
-    <g class="rb"><rect x="52" y="46" width="26" height="7" fill="#ff0000"/><rect x="52" y="53" width="26" height="7" fill="#ff9900"/><rect x="52" y="60" width="26" height="7" fill="#ffff00"/><rect x="52" y="67" width="26" height="7" fill="#33ff00"/><rect x="52" y="74" width="26" height="7" fill="#0099ff"/><rect x="52" y="81" width="26" height="7" fill="#6633ff"/></g>
-    <g class="rb"><rect x="78" y="46" width="26" height="7" fill="#ff0000"/><rect x="78" y="53" width="26" height="7" fill="#ff9900"/><rect x="78" y="60" width="26" height="7" fill="#ffff00"/><rect x="78" y="67" width="26" height="7" fill="#33ff00"/><rect x="78" y="74" width="26" height="7" fill="#0099ff"/><rect x="78" y="81" width="26" height="7" fill="#6633ff"/></g>
-  </g>
-
-  <!-- しっぽ -->
-  <g id="tail"><rect x="18" y="58" width="16" height="8" fill="#9d9d9d" stroke="#000" stroke-width="2"/></g>
-
-  <!-- ポップタルトの胴体 -->
-  <g>
-    <rect x="104" y="44" width="70" height="52" rx="6" fill="#ff9db0" stroke="#000" stroke-width="3"/>
-    <rect x="112" y="52" width="54" height="36" fill="#febcd3"/>
-    <!-- スプリンクル -->
-    <rect x="120" y="58" width="5" height="5" fill="#ff4d94"/>
-    <rect x="140" y="66" width="5" height="5" fill="#4d94ff"/>
-    <rect x="152" y="56" width="5" height="5" fill="#ffe14d"/>
-    <rect x="128" y="76" width="5" height="5" fill="#4dff88"/>
-    <rect x="150" y="78" width="5" height="5" fill="#ff4d94"/>
-    <rect x="134" y="60" width="5" height="5" fill="#b84dff"/>
-  </g>
-
-  <!-- 足 -->
-  <g id="legs" fill="#9d9d9d" stroke="#000" stroke-width="2">
-    <rect x="112" y="92" width="12" height="12"/>
-    <rect x="130" y="92" width="12" height="12"/>
-    <rect x="148" y="92" width="12" height="12"/>
-    <rect x="166" y="92" width="12" height="12"/>
-  </g>
-
-  <!-- 顔 -->
-  <g>
-    <rect x="170" y="42" width="40" height="40" rx="8" fill="#9d9d9d" stroke="#000" stroke-width="3"/>
-    <!-- 耳 -->
-    <path d="M172 44 L172 32 L184 44 Z" fill="#9d9d9d" stroke="#000" stroke-width="2"/>
-    <path d="M208 44 L208 32 L196 44 Z" fill="#9d9d9d" stroke="#000" stroke-width="2"/>
-    <!-- 目 -->
-    <rect x="180" y="54" width="8" height="10" fill="#000"/>
-    <rect x="182" y="56" width="3" height="3" fill="#fff"/>
-    <rect x="194" y="54" width="8" height="10" fill="#000"/>
-    <rect x="196" y="56" width="3" height="3" fill="#fff"/>
-    <!-- ほっぺ -->
-    <circle cx="178" cy="70" r="4" fill="#ff8fb3"/>
-    <circle cx="204" cy="70" r="4" fill="#ff8fb3"/>
-    <!-- 口 -->
-    <rect x="188" y="68" width="6" height="4" fill="#000"/>
-    <rect x="186" y="72" width="10" height="2" fill="#000"/>
-    <!-- ひげ -->
-    <rect x="168" y="62" width="10" height="2" fill="#000"/>
-    <rect x="168" y="68" width="10" height="2" fill="#000"/>
-    <rect x="204" y="62" width="10" height="2" fill="#000"/>
-    <rect x="204" y="68" width="10" height="2" fill="#000"/>
-  </g>
+<svg viewBox="0 0 ${vbW} ${vbH}" shape-rendering="crispEdges">
+${sprite}
 </svg>
 </div>
 </body>
