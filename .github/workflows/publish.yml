@@ -4,6 +4,7 @@ name: Publish Extension
 # bot のコミットは GITHUB_TOKEN によるものなので再度ワークフローを起こさない（無限ループ防止）。
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -24,6 +25,7 @@ concurrency:
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +35,27 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Verify publisher migration and credentials
+        env:
+          CONFIRMED_PUBLISHER: ${{ vars.MARKETPLACE_PUBLISHER || 'MC-Mod-Utility' }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          node <<'NODE'
+          const { publisher } = require('./package.json');
+          if (publisher !== process.env.CONFIRMED_PUBLISHER) {
+            throw new Error('Publisher migration is not confirmed. Complete Marketplace transfer before changing MARKETPLACE_PUBLISHER.');
+          }
+          if (!process.env.VSCE_PAT) {
+            throw new Error('Configure the VSCE_PAT repository secret for the confirmed publisher.');
+          }
+          NODE
+
       - run: npm ci
+
+      - name: Verify Marketplace publisher access
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce verify-pat hrmcngs
 
       - name: Bump patch version
         id: bump
