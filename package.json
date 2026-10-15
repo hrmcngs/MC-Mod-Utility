@@ -99,6 +99,11 @@
         "category": "MC Mod Utility",
         "shortTitle": "本体MODの読み込み元",
         "icon": "$(info)"
+      },
+      {
+        "command": "mc-mod-utility.openVideo",
+        "title": "WebM: 動画プレーヤーを開く",
+        "category": "MC Mod Utility"
       }
     ],
     "views": {
@@ -152,6 +157,11 @@
           "command": "mc-mod-utility.mawInsertModel",
           "when": "explorerResourceIsFolder && mcModUtility.isMawAddon",
           "group": "mcModUtility@7"
+        },
+        {
+          "command": "mc-mod-utility.openVideo",
+          "when": "resourceExtname == .webm || resourceExtname == .WEBM",
+          "group": "mcModUtility@8"
         }
       ],
       "view/title": [
@@ -273,7 +283,22 @@
           "description": "MAW アドオンを新規作成するときに雛形として使うローカルプロジェクトのパス。空なら GitHub のテンプレートか、今開いているアドオンを使う。"
         }
       }
-    }
+    },
+    "customEditors": [
+      {
+        "viewType": "mcModUtility.webmPlayer",
+        "displayName": "WebM Player",
+        "selector": [
+          {
+            "filenamePattern": "*.webm"
+          },
+          {
+            "filenamePattern": "*.WEBM"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
   },
   "scripts": {
     "lint": "eslint .",

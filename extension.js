@@ -1,4 +1,5 @@
 const vscode = require('vscode');
+const { registerVideoPlayer } = require('./src/video/player');
 const { handleNewProject } = require('./src/commands/newProject');
 const { handleAddComponent } = require('./src/commands/addComponent');
 const { handleRotationEditor } = require('./src/commands/rotationEditor');
@@ -73,6 +74,7 @@ function activate(context) {
 
     // おまけ: サイドバーで nyan cat が飛ぶ webview ビュー。
     registerNyanCat(context);
+    registerVideoPlayer(context);
 }
 
 function deactivate() {}
