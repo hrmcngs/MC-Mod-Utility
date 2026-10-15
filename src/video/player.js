@@ -5,6 +5,22 @@ function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+async function getVideoIssue(uri) {
+    try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        if (stat.size === 0) return '動画ファイルが空です。ダウンロードを完了してから再度開いてください。';
+        if (stat.size <= 1024) {
+            const contents = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+            if (contents.startsWith('version https://git-lfs.github.com/spec/v1')) {
+                return '動画本体が未取得です（Git LFS参照ファイル）。この動画があるリポジトリで git lfs pull を実行し、エディターを開き直してください。';
+            }
+        }
+        return '';
+    } catch {
+        return '動画ファイルにアクセスできません。ファイルの場所とアクセス権を確認してください。';
+    }
+}
+
 async function renderPlayer(webview, uri) {
     const files = await vscode.workspace.findFiles('**/*.{webm,WEBM}', '**/{node_modules,.git,build}/**', 200);
     const videos = [uri, ...files.filter(file => file.toString() !== uri.toString())];
@@ -13,11 +29,12 @@ async function renderPlayer(webview, uri) {
         localResourceRoots: videos.map(file => vscode.Uri.joinPath(file, '..')),
     };
     const nonce = crypto.randomBytes(18).toString('base64');
-    const entries = videos.map(file => ({
+    const entries = await Promise.all(videos.map(async file => ({
         name: file.path.split('/').pop(),
         path: vscode.workspace.asRelativePath(file),
         src: webview.asWebviewUri(file).toString(),
-    }));
+        issue: await getVideoIssue(file),
+    })));
     const data = JSON.stringify(entries).replace(/</g, '\\u003c');
     webview.html = `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -38,11 +55,17 @@ let selected = 0;
 function select(index) {
  selected = index;
  document.getElementById('status').textContent = '動画を読み込んでいます…';
+ if (entries[index].issue) {
+  video.removeAttribute('src');
+  video.load();
+ } else {
  video.src = entries[index].src;
  video.load();
+ }
  video.playbackRate = Number(document.getElementById('speed').value);
  document.getElementById('title').textContent = entries[index].name;
  document.getElementById('path').textContent = entries[index].path;
+ if (entries[index].issue) document.getElementById('status').textContent = entries[index].issue;
  draw();
 }
 function draw() {
@@ -71,6 +94,7 @@ video.addEventListener('loadedmetadata', () => {
  video.playbackRate = Number(document.getElementById('speed').value);
 });
 video.addEventListener('error', () => {
+ if (entries[selected].issue) return;
  const error = video.error;
  const reasons = {
   1: '読み込みが中断されました。再読み込みを試してください。',
@@ -106,4 +130,4 @@ function registerVideoPlayer(context) {
     );
 }
 
-module.exports = { registerVideoPlayer };
+module.exports = { registerVideoPlayer, getVideoIssue };
