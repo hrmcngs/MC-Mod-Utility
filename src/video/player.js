@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const crypto = require('crypto');
+const { createVideoServer } = require('./streamServer');
 
 function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,7 +22,7 @@ async function getVideoIssue(uri) {
     }
 }
 
-async function renderPlayer(webview, uri) {
+async function renderPlayer(webview, uri, streamServer) {
     const files = await vscode.workspace.findFiles('**/*.{webm,WEBM}', '**/{node_modules,.git,build}/**', 200);
     const videos = [uri, ...files.filter(file => file.toString() !== uri.toString())];
     webview.options = {
@@ -32,13 +33,13 @@ async function renderPlayer(webview, uri) {
     const entries = await Promise.all(videos.map(async file => ({
         name: file.path.split('/').pop(),
         path: vscode.workspace.asRelativePath(file),
-        src: webview.asWebviewUri(file).toString(),
+        src: streamServer && file.scheme === 'file' ? streamServer.add(file.fsPath) : webview.asWebviewUri(file).toString(),
         issue: await getVideoIssue(file),
     })));
     const data = JSON.stringify(entries).replace(/</g, '\\u003c');
     webview.html = `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src ${webview.cspSource}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src ${webview.cspSource} ${streamServer ? streamServer.origin : ''}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <title>${escapeHtml(entries[0].name)}</title>
 <style nonce="${nonce}">
 *{box-sizing:border-box}body{margin:0;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family),sans-serif}header{display:flex;align-items:center;gap:24px;padding:18px 24px;border-bottom:1px solid var(--vscode-panel-border)}.brand{font-size:19px;font-weight:700;white-space:nowrap}.logo{display:inline-block;background:#e53935;color:white;padding:3px 10px;border-radius:8px;margin-right:8px}input{width:100%;max-width:520px;padding:10px 16px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:24px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;max-width:1600px;padding:24px;margin:auto}video{width:100%;max-height:70vh;aspect-ratio:16/9;background:#000;border-radius:12px}h1{font-size:21px;margin:18px 0 8px;overflow-wrap:anywhere}.path{font-size:12px;opacity:.7;overflow-wrap:anywhere}.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px;padding:14px 0;border-top:1px solid var(--vscode-panel-border)}button,select{font:inherit;color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground);border:0;border-radius:8px;padding:9px 12px;cursor:pointer}button:hover{background:var(--vscode-button-secondaryHoverBackground)}:focus-visible{outline:2px solid var(--vscode-focusBorder);outline-offset:3px}h2{font-size:16px;margin:0 0 16px}.item{display:flex;gap:12px;width:100%;text-align:left;margin-bottom:10px;padding:10px;background:transparent}.item[aria-current="true"]{background:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.thumb{display:grid;place-items:center;flex:0 0 88px;height:54px;background:#252525;border-radius:6px;color:#fff}.details{min-width:0}.name{display:block;font-weight:600;overflow-wrap:anywhere}.tag{display:block;font-size:11px;opacity:.65;margin-top:6px}#status{margin-top:14px;line-height:1.6}#empty,.hint{font-size:12px;opacity:.7}.hint{line-height:1.7}button[aria-pressed="true"]{outline:2px solid var(--vscode-focusBorder)}@media(max-width:850px){main{grid-template-columns:1fr;padding:16px}header{flex-wrap:wrap;padding:16px}input{max-width:none}video{max-height:60vh}}
@@ -104,6 +105,8 @@ video.addEventListener('error', () => {
  };
  document.getElementById('status').textContent = '再生エラー: ' + (reasons[error?.code] || '原因不明') + ' [code=' + (error?.code ?? 'unknown') + '] ' + (error?.message || '');
 });
+window.addEventListener('message', event => { if (event.data?.type === 'pause') video.pause(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) video.pause(); });
 select(0);
 </script></body></html>`;
 }
@@ -124,9 +127,20 @@ function registerVideoPlayer(context) {
                 panel.webview.onDidReceiveMessage(message => {
                     if (message.type === 'open') void open();
                 }, undefined, context.subscriptions);
-                await renderPlayer(panel.webview, document.uri);
+                const streamServer = document.uri.scheme === 'file' && !vscode.env.remoteName
+                    ? await createVideoServer() : undefined;
+                if (streamServer) panel.onDidDispose(() => streamServer.dispose());
+                panel.onDidChangeViewState(() => {
+                    if (!panel.visible) void panel.webview.postMessage({ type: 'pause' });
+                });
+                try {
+                    await renderPlayer(panel.webview, document.uri, streamServer);
+                } catch (error) {
+                    streamServer?.dispose();
+                    throw error;
+                }
             },
-        }, { webviewOptions: { retainContextWhenHidden: true } })
+        }, { webviewOptions: { retainContextWhenHidden: false } })
     );
 }
 
