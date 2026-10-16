@@ -27,7 +27,8 @@ test('waits for compatibility preparation and ignores outdated video results', a
         replaceChildren() { this.childElementCount = 0; }
     }
     const elements = new Map();
-    const document = { getElementById: id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, createElement: () => new Element(), addEventListener() {} };
+    const classes = new Set();
+    const document = { body: { classList: { toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name), contains: name => classes.has(name), add: name => classes.add(name), remove: name => classes.delete(name) } }, getElementById: id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, createElement: () => new Element(), addEventListener() {} };
     document.getElementById('search').value = '';
     const requests = [];
     let onMessage;
@@ -35,7 +36,7 @@ test('waits for compatibility preparation and ignores outdated video results', a
     let registered = 0;
     await renderPlayer(webview, uri, { origin: 'http://127.0.0.1', add: () => { registered++; return 'http://127.0.0.1/video'; } }, '/cache', []);
     const script = webview.html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];
-    vm.runInNewContext(script, { document, window: { addEventListener: (_, callback) => { onMessage = callback; } }, acquireVsCodeApi: () => ({ postMessage: data => requests.push(data) }) });
+    vm.runInNewContext(script, { document, window: { addEventListener: (_, callback) => { onMessage = callback; } }, setTimeout: () => 1, clearTimeout() {}, acquireVsCodeApi: () => ({ postMessage: data => requests.push(data) }) });
     const video = document.getElementById('video');
     assert.equal(video.src, undefined);
     assert.equal(registered, 0);
@@ -46,4 +47,18 @@ test('waits for compatibility preparation and ignores outdated video results', a
     assert.equal(video.src, 'http://127.0.0.1/video');
     onMessage({ data: { type: 'sourceReady', requestId: 0, src: 'outdated' } });
     assert.equal(video.src, 'http://127.0.0.1/video');
+    document.getElementById('volume').handlers.input({ target: { value: '0.4' } });
+    assert.equal(video.volume, 0.4);
+    assert.equal(video.muted, false);
+    document.getElementById('mute').handlers.click();
+    assert.equal(video.muted, true);
+    document.getElementById('expandControl').handlers.click();
+    assert.equal(classes.has('expanded'), true);
+    await document.getElementById('fullControl').handlers.click();
+    assert.equal(requests.at(-1).type, 'immersive');
+    assert.equal(requests.at(-1).enabled, true);
+    assert.equal(classes.has('expanded'), true);
+    await document.getElementById('fullControl').handlers.click();
+    assert.equal(requests.at(-1).enabled, false);
+    assert.equal(classes.has('expanded'), false);
 });
