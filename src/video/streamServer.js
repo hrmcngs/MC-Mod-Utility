@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { pipeline } = require('node:stream');
 
 // One panel owns one server; only explicitly registered files can be served.
-async function createVideoServer() {
+async function createVideoServer(onError = () => {}) {
     const files = new Map();
     const server = http.createServer(async (req, res) => {
         const file = files.get(req.url);
@@ -14,7 +14,7 @@ async function createVideoServer() {
         }
         let handle;
         try {
-            handle = await fs.promises.open(file, 'r');
+            handle = await fs.promises.open(file.prepare ? await file.prepare() : file.path, 'r');
             const stat = await handle.stat();
             const size = stat.size;
             if (!stat.isFile() || !size) { await handle.close(); res.writeHead(404).end(); return; }
@@ -35,14 +35,15 @@ async function createVideoServer() {
                     return;
                 }
             }
-            const headers = { 'Content-Type': 'video/webm', 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+            const headers = { 'Content-Type': file.contentType, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
             if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
             res.writeHead(range ? 206 : 200, headers);
             if (req.method === 'HEAD') { await handle.close(); res.end(); return; }
             const stream = handle.createReadStream({ start, end, highWaterMark: 64 * 1024 });
             res.on('close', () => stream.destroy());
             pipeline(stream, res, () => {});
-        } catch {
+        } catch (error) {
+            onError(error);
             if (handle) await handle.close().catch(() => {});
             if (!res.headersSent) res.writeHead(404).end();
             else res.destroy();
@@ -55,9 +56,9 @@ async function createVideoServer() {
     const origin = `http://127.0.0.1:${server.address().port}`;
     return {
         origin,
-        add(file) {
+        add(file, options = {}) {
             const key = '/' + crypto.randomBytes(24).toString('hex');
-            files.set(key, file);
+            files.set(key, { path: file, contentType: options.contentType || 'video/webm', prepare: options.prepare });
             return origin + key;
         },
         dispose() { files.clear(); server.close(); server.closeAllConnections(); },

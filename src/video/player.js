@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const crypto = require('crypto');
 const { createVideoServer } = require('./streamServer');
+const { compatibleVideo } = require('./compatibility');
 
 function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -22,7 +23,7 @@ async function getVideoIssue(uri) {
     }
 }
 
-async function renderPlayer(webview, uri, streamServer) {
+async function renderPlayer(webview, uri, streamServer, cacheDirectory) {
     const files = await vscode.workspace.findFiles('**/*.{webm,WEBM}', '**/{node_modules,.git,build}/**', 200);
     const videos = [uri, ...files.filter(file => file.toString() !== uri.toString())];
     webview.options = {
@@ -33,7 +34,7 @@ async function renderPlayer(webview, uri, streamServer) {
     const entries = await Promise.all(videos.map(async file => ({
         name: file.path.split('/').pop(),
         path: vscode.workspace.asRelativePath(file),
-        src: streamServer && file.scheme === 'file' ? streamServer.add(file.fsPath) : webview.asWebviewUri(file).toString(),
+        src: streamServer && file.scheme === 'file' ? streamServer.add(file.fsPath, { contentType: 'video/mp4', prepare: () => compatibleVideo(file.fsPath, cacheDirectory) }) : webview.asWebviewUri(file).toString(),
         issue: await getVideoIssue(file),
     })));
     const data = JSON.stringify(entries).replace(/</g, '\\u003c');
@@ -55,7 +56,7 @@ const list = document.getElementById('list');
 let selected = 0;
 function select(index) {
  selected = index;
- document.getElementById('status').textContent = '動画を読み込んでいます…';
+ document.getElementById('status').textContent = '互換動画を準備しています…（初回は少し時間がかかります）';
  if (entries[index].issue) {
   video.removeAttribute('src');
   video.load();
@@ -105,7 +106,10 @@ video.addEventListener('error', () => {
  };
  document.getElementById('status').textContent = '再生エラー: ' + (reasons[error?.code] || '原因不明') + ' [code=' + (error?.code ?? 'unknown') + '] ' + (error?.message || '');
 });
-window.addEventListener('message', event => { if (event.data?.type === 'pause') video.pause(); });
+window.addEventListener('message', event => {
+ if (event.data?.type === 'pause') video.pause();
+ if (event.data?.type === 'prepareError') document.getElementById('status').textContent = event.data.message;
+});
 document.addEventListener('visibilitychange', () => { if (document.hidden) video.pause(); });
 select(0);
 </script></body></html>`;
@@ -128,13 +132,13 @@ function registerVideoPlayer(context) {
                     if (message.type === 'open') void open();
                 }, undefined, context.subscriptions);
                 const streamServer = document.uri.scheme === 'file' && !vscode.env.remoteName
-                    ? await createVideoServer() : undefined;
+                    ? await createVideoServer(error => { void panel.webview.postMessage({ type: 'prepareError', message: error.message }); }) : undefined;
                 if (streamServer) panel.onDidDispose(() => streamServer.dispose());
                 panel.onDidChangeViewState(() => {
                     if (!panel.visible) void panel.webview.postMessage({ type: 'pause' });
                 });
                 try {
-                    await renderPlayer(panel.webview, document.uri, streamServer);
+                    await renderPlayer(panel.webview, document.uri, streamServer, vscode.Uri.joinPath(context.globalStorageUri, 'video-cache').fsPath);
                 } catch (error) {
                     streamServer?.dispose();
                     throw error;

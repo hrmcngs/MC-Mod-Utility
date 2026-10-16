@@ -13,6 +13,13 @@ test('video streaming supports seeking and rejects unregistered files', async ()
     const server = await createVideoServer();
     try {
         const url = server.add(file);
+        let prepared = false;
+        const compatible = server.add('unused', { contentType: 'video/mp4', prepare: async () => { prepared = true; return file; } });
+        assert.equal(prepared, false);
+        const cached = await fetch(compatible, { headers: { Range: 'bytes=0-1' } });
+        assert.equal(cached.headers.get('content-type'), 'video/mp4');
+        assert.equal(await cached.text(), '01');
+        assert.equal(prepared, true);
         let result = await fetch(url, { headers: { Range: 'bytes=2-5' } });
         assert.equal(result.status, 206);
         assert.equal(result.headers.get('content-range'), 'bytes 2-5/10');

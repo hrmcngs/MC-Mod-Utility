@@ -1,0 +1,32 @@
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const run = promisify(execFile);
+const pending = new Map();
+
+// Preserve the video; AAC audio works with the MP4 demuxer in VS Code.
+async function compatibleVideo(file, cacheDirectory) {
+    const stat = await fs.stat(file);
+    const key = crypto.createHash('sha256').update(JSON.stringify(['aac-v1', file, stat.size, stat.mtimeMs])).digest('hex');
+    const target = path.join(cacheDirectory, key + '.mp4');
+    if (pending.has(target)) return pending.get(target);
+    const task = (async () => {
+        await fs.mkdir(cacheDirectory, { recursive: true });
+        try { await fs.access(target); return target; } catch { /* Cache miss. */ }
+        const temporary = target + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
+        try {
+            await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4', temporary], { timeout: 120000, maxBuffer: 1024 * 1024 });
+            await fs.rename(temporary, target);
+            return target;
+        } catch (error) {
+            await fs.rm(temporary, { force: true });
+            if (error.code === 'ENOENT') throw new Error('互換再生にはffmpegが必要です。ffmpegをインストールしてVS Codeを再起動してください。');
+            throw new Error('互換動画の準備に失敗しました: ' + (error.stderr || error.message));
+        }
+    })();
+    pending.set(target, task);
+    try { return await task; } finally { pending.delete(target); }
+}
+module.exports = { compatibleVideo };
