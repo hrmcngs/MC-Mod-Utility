@@ -17,7 +17,7 @@ async function compatibleVideo(file, cacheDirectory) {
         try { await fs.access(target); return target; } catch { /* Cache miss. */ }
         const temporary = target + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
         try {
-            await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4', temporary], { timeout: 120000, maxBuffer: 1024 * 1024 });
+            await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4', temporary], { timeout: 30 * 60 * 1000, maxBuffer: 1024 * 1024 });
             await fs.rename(temporary, target);
             return target;
         } catch (error) {

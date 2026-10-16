@@ -23,7 +23,7 @@ async function getVideoIssue(uri) {
     }
 }
 
-async function renderPlayer(webview, uri, streamServer, cacheDirectory) {
+async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposables) {
     const files = await vscode.workspace.findFiles('**/*.{webm,WEBM}', '**/{node_modules,.git,build}/**', 200);
     const videos = [uri, ...files.filter(file => file.toString() !== uri.toString())];
     webview.options = {
@@ -34,9 +34,21 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory) {
     const entries = await Promise.all(videos.map(async file => ({
         name: file.path.split('/').pop(),
         path: vscode.workspace.asRelativePath(file),
-        src: streamServer && file.scheme === 'file' ? streamServer.add(file.fsPath, { contentType: 'video/mp4', prepare: () => compatibleVideo(file.fsPath, cacheDirectory) }) : webview.asWebviewUri(file).toString(),
+        src: streamServer && file.scheme === 'file' ? null : webview.asWebviewUri(file).toString(),
         issue: await getVideoIssue(file),
     })));
+    if (streamServer) disposables.push(webview.onDidReceiveMessage(async message => {
+        if (message.type !== 'prepare' || !Number.isInteger(message.index) || !Number.isSafeInteger(message.requestId)) return;
+        const file = videos[message.index];
+        if (!file || file.scheme !== 'file' || entries[message.index].issue) return;
+        try {
+            const prepared = await compatibleVideo(file.fsPath, cacheDirectory);
+            const src = streamServer.add(prepared, { contentType: 'video/mp4' });
+            await webview.postMessage({ type: 'sourceReady', requestId: message.requestId, src });
+        } catch (error) {
+            await webview.postMessage({ type: 'prepareError', requestId: message.requestId, message: error.message });
+        }
+    }));
     const data = JSON.stringify(entries).replace(/</g, '\\u003c');
     webview.html = `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -54,12 +66,21 @@ const entries = ${data};
 const video = document.getElementById('video');
 const list = document.getElementById('list');
 let selected = 0;
+let requestId = 0;
+let preparing = false;
 function select(index) {
  selected = index;
+ requestId++;
+ preparing = !entries[index].issue && !entries[index].src;
+ video.pause();
  document.getElementById('status').textContent = '互換動画を準備しています…（初回は少し時間がかかります）';
  if (entries[index].issue) {
   video.removeAttribute('src');
   video.load();
+ } else if (preparing) {
+ video.removeAttribute('src');
+ video.load();
+ vscode.postMessage({ type: 'prepare', index, requestId });
  } else {
  video.src = entries[index].src;
  video.load();
@@ -96,7 +117,7 @@ video.addEventListener('loadedmetadata', () => {
  video.playbackRate = Number(document.getElementById('speed').value);
 });
 video.addEventListener('error', () => {
- if (entries[selected].issue) return;
+ if (entries[selected].issue || preparing) return;
  const error = video.error;
  const reasons = {
   1: '読み込みが中断されました。再読み込みを試してください。',
@@ -108,7 +129,17 @@ video.addEventListener('error', () => {
 });
 window.addEventListener('message', event => {
  if (event.data?.type === 'pause') video.pause();
- if (event.data?.type === 'prepareError') document.getElementById('status').textContent = event.data.message;
+ if (event.data?.requestId !== requestId) return;
+ if (event.data.type === 'sourceReady') {
+  preparing = false;
+  video.src = event.data.src;
+  video.load();
+  document.getElementById('status').textContent = '動画を読み込んでいます…';
+ }
+ if (event.data.type === 'prepareError') {
+  preparing = false;
+  document.getElementById('status').textContent = event.data.message;
+ }
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) video.pause(); });
 select(0);
@@ -137,8 +168,10 @@ function registerVideoPlayer(context) {
                 panel.onDidChangeViewState(() => {
                     if (!panel.visible) void panel.webview.postMessage({ type: 'pause' });
                 });
+                const disposables = [];
+                panel.onDidDispose(() => disposables.forEach(item => item.dispose()));
                 try {
-                    await renderPlayer(panel.webview, document.uri, streamServer, vscode.Uri.joinPath(context.globalStorageUri, 'video-cache').fsPath);
+                    await renderPlayer(panel.webview, document.uri, streamServer, vscode.Uri.joinPath(context.globalStorageUri, 'video-cache').fsPath, disposables);
                 } catch (error) {
                     streamServer?.dispose();
                     throw error;
@@ -148,4 +181,4 @@ function registerVideoPlayer(context) {
     );
 }
 
-module.exports = { registerVideoPlayer, getVideoIssue };
+module.exports = { registerVideoPlayer, getVideoIssue, renderPlayer };
