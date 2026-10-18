@@ -10,7 +10,7 @@ test('waits for compatibility preparation and ignores outdated video results', a
     let finish;
     const prepared = new Promise(resolve => { finish = resolve; });
     Module._load = function(name, ...args) {
-        if (name === 'vscode') return { workspace: { findFiles: async () => [], asRelativePath: () => 'test.webm', fs: { stat: async () => ({ size: 2048 }) } }, Uri: { joinPath: () => uri } };
+        if (name === 'vscode') return { workspace: { findFiles: async () => [{ ...uri, path: '/aaa.webm', fsPath: '/aaa.webm', toString: () => '/aaa.webm' }], asRelativePath: () => 'test.webm', fs: { stat: async () => ({ size: 2048 }) } }, Uri: { joinPath: () => uri } };
         if (name === './compatibility') return { compatibleVideo: () => prepared };
         return load.call(this, name, ...args);
     };
@@ -40,6 +40,7 @@ test('waits for compatibility preparation and ignores outdated video results', a
     const video = document.getElementById('video');
     assert.equal(video.src, undefined);
     assert.equal(registered, 0);
+    assert.equal(requests[0].index, 1, 'opens the selected file without moving it ahead of alphabetically earlier files');
     const task = listeners[0](requests[0]);
     assert.equal(video.src, undefined);
     finish('/cache/prepared.mp4');

@@ -1,3 +1,4 @@
+const { sortVideos } = require('./videoOrder');
 const vscode = require('vscode');
 const crypto = require('crypto');
 const { createVideoServer } = require('./streamServer');
@@ -39,7 +40,8 @@ async function getVideoIssue(uri) {
 
 async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposables) {
     const files = await vscode.workspace.findFiles('**/*.{webm,WEBM}', '**/{node_modules,.git,build}/**', 200);
-    const videos = [uri, ...files.filter(file => file.toString() !== uri.toString())];
+    const videos = sortVideos([uri, ...files.filter(file => file.toString() !== uri.toString())]);
+    const initialIndex = videos.findIndex(file => file.toString() === uri.toString());
     webview.options = {
         enableScripts: true,
         localResourceRoots: videos.map(file => vscode.Uri.joinPath(file, '..')),
@@ -67,7 +69,7 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
     webview.html = `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src ${webview.cspSource} ${streamServer ? streamServer.origin : ''}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
-<title>${escapeHtml(entries[0].name)}</title>
+<title>${escapeHtml(entries[initialIndex].name)}</title>
 <style nonce="${nonce}">
 *{box-sizing:border-box}body{margin:0;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family),sans-serif}header{display:flex;align-items:center;gap:24px;padding:18px 24px;border-bottom:1px solid var(--vscode-panel-border)}.brand{font-size:19px;font-weight:700;white-space:nowrap}.logo{display:inline-block;background:#e53935;color:white;padding:3px 10px;border-radius:8px;margin-right:8px}input{width:100%;max-width:520px;padding:10px 16px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:24px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;max-width:1600px;padding:24px;margin:auto}video{width:100%;max-height:70vh;aspect-ratio:16/9;background:#000;border-radius:12px}h1{font-size:21px;margin:18px 0 8px;overflow-wrap:anywhere}.path{font-size:12px;opacity:.7;overflow-wrap:anywhere}.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px;padding:14px 0;border-top:1px solid var(--vscode-panel-border)}button,select{font:inherit;color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground);border:0;border-radius:8px;padding:9px 12px;cursor:pointer}button:hover{background:var(--vscode-button-secondaryHoverBackground)}:focus-visible{outline:2px solid var(--vscode-focusBorder);outline-offset:3px}h2{font-size:16px;margin:0 0 16px}.item{display:flex;gap:12px;width:100%;text-align:left;margin-bottom:10px;padding:10px;background:transparent}.item[aria-current="true"]{background:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.thumb{display:grid;place-items:center;flex:0 0 88px;height:54px;background:#252525;border-radius:6px;color:#fff}.details{min-width:0}.name{display:block;font-weight:600;overflow-wrap:anywhere}.tag{display:block;font-size:11px;opacity:.65;margin-top:6px}#status{margin-top:14px;line-height:1.6}#empty,.hint{font-size:12px;opacity:.7}.hint{line-height:1.7}button[aria-pressed="true"]{outline:2px solid var(--vscode-focusBorder)}@media(max-width:850px){main{grid-template-columns:1fr;padding:16px}header{flex-wrap:wrap;padding:16px}input{max-width:none}video{max-height:60vh}}
 body.expanded{overflow:hidden}body.expanded header,body.expanded aside,body.expanded h1,body.expanded .path,body.expanded .hint{display:none}body.expanded main{display:block;max-width:none;padding:0}body.expanded video{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;aspect-ratio:auto;object-fit:contain;border-radius:0}body.expanded .toolbar{position:fixed;top:12px;right:12px;z-index:2;border:0;background:var(--vscode-editor-background);border-radius:8px;padding:8px;margin:0}body.expanded .toolbar>:not(#fullscreen):not(#windowFullscreen){display:none}body.expanded #status{position:fixed;top:70px;left:16px;right:16px;z-index:2}
@@ -111,7 +113,7 @@ document.getElementById('volume').addEventListener('input', event => { video.vol
 document.getElementById('expandControl').addEventListener('click', () => expandVideo(!document.body.classList.contains('expanded')));
 document.getElementById('fullControl').addEventListener('click', toggleFullscreen);
 for (const event of ['timeupdate', 'durationchange', 'play', 'pause', 'volumechange', 'loadedmetadata', 'emptied']) video.addEventListener(event, updatePlayback);
-let selected = 0;
+let selected = ${initialIndex};
 let requestId = 0;
 let preparing = false;
 function select(index) {
@@ -245,7 +247,7 @@ window.addEventListener('message', event => {
  }
 });
 document.addEventListener('visibilitychange', () => { if (document.hidden) video.pause(); });
-select(0);
+select(${initialIndex});
 </script></body></html>`;
 }
 
