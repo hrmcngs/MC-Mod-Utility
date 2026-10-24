@@ -6,10 +6,10 @@ const { promisify } = require('node:util');
 const run = promisify(execFile);
 const pending = new Map();
 
-// Preserve the video; AAC audio works with the MP4 demuxer in VS Code.
+// Use H.264 and MP3 for VS Code webviews; AAC audio is unsupported.
 async function compatibleVideo(file, cacheDirectory) {
     const stat = await fs.stat(file);
-    const key = crypto.createHash('sha256').update(JSON.stringify(['aac-v1', file, stat.size, stat.mtimeMs])).digest('hex');
+    const key = crypto.createHash('sha256').update(JSON.stringify(['h264-mp3-v3', file, stat.size, stat.mtimeMs])).digest('hex');
     const target = path.join(cacheDirectory, key + '.mp4');
     if (pending.has(target)) return pending.get(target);
     const task = (async () => {
@@ -17,7 +17,7 @@ async function compatibleVideo(file, cacheDirectory) {
         try { await fs.access(target); return target; } catch { /* Cache miss. */ }
         const temporary = target + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
         try {
-            await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4', temporary], { timeout: 30 * 60 * 1000, maxBuffer: 1024 * 1024 });
+            await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-pix_fmt', 'yuv420p', '-c:a', 'libmp3lame', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4', temporary], { timeout: 30 * 60 * 1000, maxBuffer: 1024 * 1024 });
             await fs.rename(temporary, target);
             return target;
         } catch (error) {
