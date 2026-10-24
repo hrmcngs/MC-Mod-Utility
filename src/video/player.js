@@ -3,6 +3,7 @@ const vscode = require('vscode');
 const crypto = require('crypto');
 const { createVideoServer } = require('./streamServer');
 const { compatibleVideo } = require('./compatibility');
+const { videoThumbnail } = require('./thumbnail');
 
 const iconPaths = {
     play: '<path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/>',
@@ -50,8 +51,12 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
     const entries = await Promise.all(videos.map(async file => ({
         name: file.path.split('/').pop(),
         path: vscode.workspace.asRelativePath(file),
-        src: streamServer && file.scheme === 'file' ? null : webview.asWebviewUri(file).toString(),
+        src: streamServer && file.scheme === 'file' ? streamServer.add(file.fsPath) : webview.asWebviewUri(file).toString(),
+        canPrepare: !!streamServer && file.scheme === 'file',
         issue: await getVideoIssue(file),
+        thumbnail: streamServer && file.scheme === 'file' ? streamServer.add(file.fsPath, {
+            contentType: 'image/jpeg', prepare: () => videoThumbnail(file.fsPath, cacheDirectory),
+        }) : null,
     })));
     if (streamServer) disposables.push(webview.onDidReceiveMessage(async message => {
         if (message.type !== 'prepare' || !Number.isInteger(message.index) || !Number.isSafeInteger(message.requestId)) return;
@@ -59,7 +64,7 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
         if (!file || file.scheme !== 'file' || entries[message.index].issue) return;
         try {
             const prepared = await compatibleVideo(file.fsPath, cacheDirectory);
-            const src = streamServer.add(prepared, { contentType: 'video/mp4' });
+            const src = streamServer.add(prepared, { contentType: 'video/webm' });
             await webview.postMessage({ type: 'sourceReady', requestId: message.requestId, src });
         } catch (error) {
             await webview.postMessage({ type: 'prepareError', requestId: message.requestId, message: error.message });
@@ -68,17 +73,17 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
     const data = JSON.stringify(entries).replace(/</g, '\\u003c');
     webview.html = `<!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; media-src ${webview.cspSource} ${streamServer ? streamServer.origin : ''}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} ${streamServer ? streamServer.origin : ''}; media-src ${webview.cspSource} ${streamServer ? streamServer.origin : ''}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 <title>${escapeHtml(entries[initialIndex].name)}</title>
 <style nonce="${nonce}">
 *{box-sizing:border-box}body{margin:0;background:var(--vscode-editor-background);color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family),sans-serif}header{display:flex;align-items:center;gap:24px;padding:18px 24px;border-bottom:1px solid var(--vscode-panel-border)}.brand{font-size:19px;font-weight:700;white-space:nowrap}.logo{display:inline-block;background:#e53935;color:white;padding:3px 10px;border-radius:8px;margin-right:8px}input{width:100%;max-width:520px;padding:10px 16px;border:1px solid var(--vscode-input-border,var(--vscode-panel-border));border-radius:24px;background:var(--vscode-input-background);color:var(--vscode-input-foreground)}main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;max-width:1600px;padding:24px;margin:auto}video{width:100%;max-height:70vh;aspect-ratio:16/9;background:#000;border-radius:12px}h1{font-size:21px;margin:18px 0 8px;overflow-wrap:anywhere}.path{font-size:12px;opacity:.7;overflow-wrap:anywhere}.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px;padding:14px 0;border-top:1px solid var(--vscode-panel-border)}button,select{font:inherit;color:var(--vscode-button-secondaryForeground);background:var(--vscode-button-secondaryBackground);border:0;border-radius:8px;padding:9px 12px;cursor:pointer}button:hover{background:var(--vscode-button-secondaryHoverBackground)}:focus-visible{outline:2px solid var(--vscode-focusBorder);outline-offset:3px}h2{font-size:16px;margin:0 0 16px}.item{display:flex;gap:12px;width:100%;text-align:left;margin-bottom:10px;padding:10px;background:transparent}.item[aria-current="true"]{background:var(--vscode-list-activeSelectionBackground);color:var(--vscode-list-activeSelectionForeground)}.thumb{display:grid;place-items:center;flex:0 0 88px;height:54px;background:#252525;border-radius:6px;color:#fff}.details{min-width:0}.name{display:block;font-weight:600;overflow-wrap:anywhere}.tag{display:block;font-size:11px;opacity:.65;margin-top:6px}#status{margin-top:14px;line-height:1.6}#empty,.hint{font-size:12px;opacity:.7}.hint{line-height:1.7}button[aria-pressed="true"]{outline:2px solid var(--vscode-focusBorder)}@media(max-width:850px){main{grid-template-columns:1fr;padding:16px}header{flex-wrap:wrap;padding:16px}input{max-width:none}video{max-height:60vh}}
 body.expanded{overflow:hidden}body.expanded header,body.expanded aside,body.expanded h1,body.expanded .path,body.expanded .hint{display:none}body.expanded main{display:block;max-width:none;padding:0}body.expanded video{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;aspect-ratio:auto;object-fit:contain;border-radius:0}body.expanded .toolbar{position:fixed;top:12px;right:12px;z-index:2;border:0;background:var(--vscode-editor-background);border-radius:8px;padding:8px;margin:0}body.expanded .toolbar>:not(#fullscreen):not(#windowFullscreen){display:none}body.expanded #status{position:fixed;top:70px;left:16px;right:16px;z-index:2}
 .playback{display:flex;align-items:center;gap:10px;padding:10px;background:var(--vscode-editor-background);border-radius:8px;flex-wrap:wrap}.playback input[type=range]{padding:0;border:0;border-radius:0;cursor:pointer;accent-color:#e53935}#seek{flex:1;min-width:90px;max-width:none}#volume{width:90px}#time{font-variant-numeric:tabular-nums;font-size:12px}body.expanded .playback{position:fixed;bottom:0;left:0;right:0;z-index:3;border-radius:0}body.expanded{background:#000}body.expanded video{height:100vh}body.expanded .toolbar{display:none}body.expanded .playback{color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.85));padding:35px 20px 15px;transition:opacity .2s}body.expanded .playback button{color:#fff;background:transparent}body.expanded.controls-hidden{cursor:none}body.expanded.controls-hidden .playback{opacity:0;pointer-events:none}body.expanded #expandControl{display:none}
 .stage{position:relative;width:100%;aspect-ratio:16/9;max-height:70vh;background:#000;border-radius:12px;overflow:hidden}.stage video{display:block;width:100%;height:100%;max-height:none;aspect-ratio:auto;object-fit:contain}.playback{position:absolute;bottom:0;left:0;right:0;z-index:5;display:flex;flex-wrap:wrap;gap:6px;padding:36px 16px 10px;background:linear-gradient(transparent,rgba(0,0,0,.8));color:#fff;border-radius:0;transition:opacity .18s}.playback button{background:transparent;color:#fff;border-radius:4px;min-width:38px;height:36px;padding:4px;font-size:23px}.playback button:hover{background:rgba(255,255,255,.18)}#seek{order:-1;flex:none;width:100%;height:16px;min-width:0;margin:0;accent-color:#f03;cursor:pointer}#volume{width:74px;accent-color:#fff;background:transparent}#time{font-size:13px;margin-left:8px;white-space:nowrap}#mute{order:1}#volume{order:2}#time{order:3}#expandControl{order:4;margin-left:auto}#fullControl{order:5}.controls-hidden .playback{opacity:0;pointer-events:none}.stage .playback:has(:focus-visible){opacity:1;pointer-events:auto}body.expanded .stage{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;border-radius:0}body.expanded .stage video{position:absolute;inset:0;width:100%;height:100%}body.expanded #fullControl{margin-left:auto}body.expanded .playback{position:absolute;padding:36px 20px 14px}@media(max-width:500px){#volume{width:50px}.playback{padding-left:8px;padding-right:8px;gap:3px}#time{font-size:11px}}
-.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
+.thumb{overflow:hidden;position:relative}.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
 </style></head><body>
 <header><div class="brand"><span class="logo">${icons.play}</span>WebM Player</div><input id="search" type="search" placeholder="動画を検索" aria-label="動画一覧を検索"></header>
-<main><section aria-label="動画プレーヤー"><div class="stage"><video id="video" playsinline preload="metadata"></video><div class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / 0:00</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status"></div><p class="hint">再生画面にフォーカスすると、標準の動画コントロールをキーボードでも操作できます。</p></section>
+<main><section aria-label="動画プレーヤー"><div class="stage"><video id="video" playsinline preload="metadata"></video><div class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / 0:00</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">再生画面にフォーカスすると、標準の動画コントロールをキーボードでも操作できます。</p></section>
 <aside><h2>ワークスペースの動画 <span id="count"></span></h2><div id="list"></div><p id="empty" hidden>一致する動画がありません。</p><p class="hint">WebMを最大200件表示。追加した動画はエディターを開き直すと反映されます。</p></aside></main>
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
@@ -101,6 +106,7 @@ function updatePlayback() {
  document.getElementById('volume').value = String(video.volume);
 }
 document.getElementById('play').addEventListener('click', async () => {
+ if (preparing) { document.getElementById('status').textContent = '互換動画を準備しています。完了までお待ちください。'; return; }
  if (video.paused) {
   try { await video.play(); } catch (error) { document.getElementById('status').textContent = '再生できません: ' + error.message; }
  } else video.pause();
@@ -116,12 +122,17 @@ for (const event of ['timeupdate', 'durationchange', 'play', 'pause', 'volumecha
 let selected = ${initialIndex};
 let requestId = 0;
 let preparing = false;
-function select(index) {
+function select(index, compatible = false) {
  selected = index;
  requestId++;
- preparing = !entries[index].issue && !entries[index].src;
+ preparing = !entries[index].issue && compatible && entries[index].canPrepare;
+ if (preparing) entries[index].compatibilityAttempted = true;
+ document.getElementById('compatible').disabled = !entries[index].canPrepare || preparing;
+ video.poster = entries[index].thumbnail || '';
  video.pause();
- document.getElementById('status').textContent = '互換動画を準備しています…（初回は少し時間がかかります）';
+ document.getElementById('status').textContent = preparing
+  ? '互換動画を準備しています…（音声を変換しています）'
+  : '動画を読み込んでいます…';
  if (entries[index].issue) {
   video.removeAttribute('src');
   video.load();
@@ -147,6 +158,11 @@ function draw() {
   const button = document.createElement('button'); button.className = 'item';
   button.setAttribute('aria-current', String(index === selected));
   const thumb = document.createElement('span'); thumb.className = 'thumb'; thumb.innerHTML = icons.play; thumb.setAttribute('aria-hidden', 'true');
+  if (entry.thumbnail && !entry.issue) {
+   const image = document.createElement('img'); image.alt = ''; image.loading = 'lazy'; image.src = entry.thumbnail;
+   image.addEventListener('error', () => image.remove());
+   thumb.append(image);
+  }
   const details = document.createElement('span'); details.className = 'details';
   const name = document.createElement('span'); name.className = 'name'; name.textContent = entry.name;
   const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = entry.path;
@@ -217,12 +233,14 @@ document.getElementById('open').addEventListener('click', () => vscode.postMessa
 document.getElementById('speed').addEventListener('change', event => { video.playbackRate = Number(event.target.value); });
 document.getElementById('loop').addEventListener('click', event => { video.loop = !video.loop; event.currentTarget.setAttribute('aria-pressed', String(video.loop)); });
 document.getElementById('retry').addEventListener('click', () => select(selected));
+document.getElementById('compatible').addEventListener('click', () => select(selected, true));
 video.addEventListener('loadedmetadata', () => {
- document.getElementById('status').textContent = '';
+ document.getElementById('status').textContent = '再生ボタンを押すと再生します。音が出ない場合は「互換再生」を試してください。';
  video.playbackRate = Number(document.getElementById('speed').value);
 });
 video.addEventListener('error', () => {
  if (entries[selected].issue || preparing) return;
+ if (entries[selected].canPrepare && !entries[selected].compatibilityAttempted) { select(selected, true); return; }
  const error = video.error;
  const reasons = {
   1: '読み込みが中断されました。再読み込みを試してください。',
@@ -237,12 +255,15 @@ window.addEventListener('message', event => {
  if (event.data?.requestId !== requestId) return;
  if (event.data.type === 'sourceReady') {
   preparing = false;
+  document.getElementById('compatible').disabled = !entries[selected].canPrepare;
+  entries[selected].src = event.data.src;
   video.src = event.data.src;
   video.load();
   document.getElementById('status').textContent = '動画を読み込んでいます…';
  }
  if (event.data.type === 'prepareError') {
   preparing = false;
+  document.getElementById('compatible').disabled = !entries[selected].canPrepare;
   document.getElementById('status').textContent = event.data.message;
  }
 });
@@ -264,6 +285,7 @@ function registerVideoPlayer(context) {
         vscode.window.registerCustomEditorProvider('mcModUtility.webmPlayer', {
             openCustomDocument: uri => ({ uri, dispose() {} }),
             async resolveCustomEditor(document, panel) {
+                panel.webview.html = '<!doctype html><html lang="ja"><meta charset="utf-8"><h1>WebM Player</h1><p role="status">動画を読み込んでいます…</p></html>';
                 let hostImmersive = false;
                 panel.onDidDispose(() => {
                     if (hostImmersive) void vscode.commands.executeCommand('workbench.action.toggleZenMode');
@@ -275,8 +297,13 @@ function registerVideoPlayer(context) {
                         void vscode.commands.executeCommand('workbench.action.toggleZenMode');
                     }
                 }, undefined, context.subscriptions);
-                const streamServer = document.uri.scheme === 'file' && !vscode.env.remoteName
-                    ? await createVideoServer(error => { void panel.webview.postMessage({ type: 'prepareError', message: error.message }); }) : undefined;
+                let streamServer;
+                try {
+                    streamServer = document.uri.scheme === 'file' && !vscode.env.remoteName
+                    ? await createVideoServer(error => { console.error('Video stream error:', error); }) : undefined;
+                } catch (error) {
+                    console.error('Video server unavailable; using webview resources:', error);
+                }
                 if (streamServer) panel.onDidDispose(() => streamServer.dispose());
                 panel.onDidChangeViewState(() => {
                     if (!panel.visible) void panel.webview.postMessage({ type: 'pause' });
@@ -287,7 +314,7 @@ function registerVideoPlayer(context) {
                     await renderPlayer(panel.webview, document.uri, streamServer, vscode.Uri.joinPath(context.globalStorageUri, 'video-cache').fsPath, disposables);
                 } catch (error) {
                     streamServer?.dispose();
-                    throw error;
+                    panel.webview.html = '<!doctype html><html lang="ja"><meta charset="utf-8"><h1>動画を開けませんでした</h1><p role="alert">' + escapeHtml(error.message) + '</p><p>動画のタブを閉じて開き直してください。</p></html>';
                 }
             },
         }, { webviewOptions: { retainContextWhenHidden: false } })
