@@ -19,6 +19,7 @@ test('WebM fallback uses H.264 and MP3; silent clips and thumbnails work', { ski
         const [converted, duplicate] = await Promise.all([compatibleVideo(source, cache), compatibleVideo(source, cache)]);
         assert.equal(converted, duplicate);
         assert.equal(path.extname(converted), '.mp4');
+        assert.ok((await fs.readFile(converted)).includes(Buffer.from('moof')), 'uses fragments for playback during conversion');
         const streams = probe(converted).streams;
         assert.equal(streams.find(s => s.codec_type === 'video').codec_name, 'h264');
         assert.equal(streams.find(s => s.codec_type === 'audio').codec_name, 'mp3');

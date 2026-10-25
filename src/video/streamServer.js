@@ -1,11 +1,13 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
-const { pipeline } = require('node:stream');
+const { Readable, pipeline } = require('node:stream');
 
 // One panel owns one server; only explicitly registered files can be served.
 async function createVideoServer(onError = () => {}) {
     const files = new Map();
+    const jobs = new Set();
+    let disposed = false;
     const server = http.createServer(async (req, res) => {
         const file = files.get(req.url);
         if (!file || !['GET', 'HEAD'].includes(req.method)) {
@@ -14,7 +16,18 @@ async function createVideoServer(onError = () => {}) {
         }
         let handle;
         try {
-            handle = await fs.promises.open(file.prepare ? await file.prepare() : file.path, 'r');
+            if (file.progressive && !file.progressive.complete) {
+                const job = file.progressive;
+                await job.ready;
+                if (res.destroyed) return;
+                res.writeHead(200, { 'Content-Type': file.contentType, 'Cache-Control': 'no-store', 'Accept-Ranges': 'none', 'X-Content-Type-Options': 'nosniff' });
+                if (req.method === 'HEAD') { res.end(); return; }
+                const controller = new AbortController();
+                res.on('close', () => controller.abort());
+                pipeline(Readable.from(job.chunks(controller.signal)), res, () => {});
+                return;
+            }
+            handle = await fs.promises.open(file.progressive ? file.progressive.path : file.prepare ? await file.prepare() : file.path, 'r');
             const stat = await handle.stat();
             const size = stat.size;
             if (!stat.isFile() || !size) { await handle.close(); res.writeHead(404).end(); return; }
@@ -57,11 +70,13 @@ async function createVideoServer(onError = () => {}) {
     return {
         origin,
         add(file, options = {}) {
+            if (disposed) throw new Error('動画プレーヤーは閉じられています');
+            if (options.progressive && !jobs.has(options.progressive)) { jobs.add(options.progressive); options.progressive.retain(); }
             const key = '/' + crypto.randomBytes(24).toString('hex');
-            files.set(key, { path: file, contentType: options.contentType || 'video/webm', prepare: options.prepare });
+            files.set(key, { path: file, contentType: options.contentType || 'video/webm', prepare: options.prepare, progressive: options.progressive });
             return origin + key;
         },
-        dispose() { files.clear(); server.close(); server.closeAllConnections(); },
+        dispose() { disposed = true; for (const job of jobs) job.release(); jobs.clear(); files.clear(); server.close(); server.closeAllConnections(); },
     };
 }
 module.exports = { createVideoServer };

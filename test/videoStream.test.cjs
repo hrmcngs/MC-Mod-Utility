@@ -42,3 +42,41 @@ test('video streaming supports seeking and rejects unregistered files', async ()
         await fs.rm(dir, { recursive: true, force: true });
     }
 });
+
+
+test('progressive MP4 sends playable bytes before conversion ends and supports ranges afterward', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'video-progressive-'));
+    const file = path.join(dir, 'converted.mp4');
+    await fs.writeFile(file, '0123456789');
+    let finish;
+    const completion = new Promise(resolve => { finish = resolve; });
+    let complete = false, references = 0;
+    const job = {
+        path: file, ready: Promise.resolve(file), get complete() { return complete; },
+        retain() { references++; }, release() { references--; },
+        async *chunks() { yield Buffer.from('01'); await completion; yield Buffer.from('23456789'); },
+    };
+    const server = await createVideoServer();
+    try {
+        const url = server.add(file, { contentType: 'video/mp4', progressive: job });
+        const result = await fetch(url, { headers: { Range: 'bytes=0-' } });
+        assert.equal(result.status, 200);
+        assert.equal(result.headers.get('content-type'), 'video/mp4');
+        assert.equal(result.headers.get('content-length'), null);
+        const reader = result.body.getReader();
+        assert.equal(Buffer.from((await reader.read()).value).toString(), '01');
+        assert.equal(complete, false, 'first bytes arrive before conversion completes');
+        assert.equal(references, 1);
+        complete = true; finish();
+        let remaining = '';
+        for (;;) { const next = await reader.read(); if (next.done) break; remaining += Buffer.from(next.value).toString(); }
+        assert.equal(remaining, '23456789');
+        const seek = await fetch(url, { headers: { Range: 'bytes=6-9' } });
+        assert.equal(seek.status, 206);
+        assert.equal(await seek.text(), '6789');
+    } finally {
+        finish(); server.dispose();
+        assert.equal(references, 0);
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});

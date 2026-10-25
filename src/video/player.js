@@ -2,7 +2,7 @@ const { sortVideos } = require('./videoOrder');
 const vscode = require('vscode');
 const crypto = require('crypto');
 const { createVideoServer } = require('./streamServer');
-const { compatibleVideo } = require('./compatibility');
+const { prepareCompatibleVideo } = require('./compatibility');
 const { thumbnailData } = require('./thumbnail');
 
 const iconPaths = {
@@ -73,9 +73,12 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
         const file = videos[message.index];
         if (!file || file.scheme !== 'file' || entries[message.index].issue) return;
         try {
-            const prepared = await compatibleVideo(file.fsPath, cacheDirectory);
-            const src = streamServer.add(prepared, { contentType: 'video/mp4' });
-            await webview.postMessage({ type: 'sourceReady', requestId: message.requestId, src });
+            const job = await prepareCompatibleVideo(file.fsPath, cacheDirectory);
+            const src = streamServer.add(job.path, { contentType: 'video/mp4', progressive: job });
+            disposables.push(job.subscribe(percent => { void webview.postMessage({ type: 'conversionProgress', requestId: message.requestId, percent }); }));
+            job.done.then(() => webview.postMessage({ type: 'conversionComplete', requestId: message.requestId })).catch(error => webview.postMessage({ type: 'prepareError', requestId: message.requestId, message: error.message }));
+            await job.ready;
+            await webview.postMessage({ type: 'sourceReady', requestId: message.requestId, src, duration: job.duration, converting: !job.complete });
         } catch (error) {
             await webview.postMessage({ type: 'prepareError', requestId: message.requestId, message: error.message });
         }
@@ -90,10 +93,10 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
 body.expanded{overflow:hidden}body.expanded header,body.expanded aside,body.expanded h1,body.expanded .path,body.expanded .hint{display:none}body.expanded main{display:block;max-width:none;padding:0}body.expanded video{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;aspect-ratio:auto;object-fit:contain;border-radius:0}body.expanded .toolbar{position:fixed;top:12px;right:12px;z-index:2;border:0;background:var(--vscode-editor-background);border-radius:8px;padding:8px;margin:0}body.expanded .toolbar>:not(#fullscreen):not(#windowFullscreen){display:none}body.expanded #status{position:fixed;top:70px;left:16px;right:16px;z-index:2}
 .playback{display:flex;align-items:center;gap:10px;padding:10px;background:var(--vscode-editor-background);border-radius:8px;flex-wrap:wrap}.playback input[type=range]{padding:0;border:0;border-radius:0;cursor:pointer;accent-color:#e53935}#seek{flex:1;min-width:90px;max-width:none}#volume{width:90px}#time{font-variant-numeric:tabular-nums;font-size:12px}body.expanded .playback{position:fixed;bottom:0;left:0;right:0;z-index:3;border-radius:0}body.expanded{background:#000}body.expanded video{height:100vh}body.expanded .toolbar{display:none}body.expanded .playback{color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.85));padding:35px 20px 15px;transition:opacity .2s}body.expanded .playback button{color:#fff;background:transparent}body.expanded.controls-hidden{cursor:none}body.expanded.controls-hidden .playback{opacity:0;pointer-events:none}body.expanded #expandControl{display:none}
 .stage{position:relative;width:100%;aspect-ratio:16/9;max-height:70vh;background:#000;border-radius:12px;overflow:hidden}.stage video{display:block;width:100%;height:100%;max-height:none;aspect-ratio:auto;object-fit:contain}.playback{position:absolute;bottom:0;left:0;right:0;z-index:5;display:flex;flex-wrap:wrap;gap:6px;padding:36px 16px 10px;background:linear-gradient(transparent,rgba(0,0,0,.8));color:#fff;border-radius:0;transition:opacity .18s}.playback button{background:transparent;color:#fff;border-radius:4px;min-width:38px;height:36px;padding:4px;font-size:23px}.playback button:hover{background:rgba(255,255,255,.18)}#seek{order:-1;flex:none;width:100%;height:16px;min-width:0;margin:0;accent-color:#f03;cursor:pointer}#volume{width:74px;accent-color:#fff;background:transparent}#time{font-size:13px;margin-left:8px;white-space:nowrap}#mute{order:1}#volume{order:2}#time{order:3}#expandControl{order:4;margin-left:auto}#fullControl{order:5}.controls-hidden .playback{opacity:0;pointer-events:none}.stage .playback:has(:focus-visible){opacity:1;pointer-events:auto}body.expanded .stage{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;border-radius:0}body.expanded .stage video{position:absolute;inset:0;width:100%;height:100%}body.expanded #fullControl{margin-left:auto}body.expanded .playback{position:absolute;padding:36px 20px 14px}@media(max-width:500px){#volume{width:50px}.playback{padding-left:8px;padding-right:8px;gap:3px}#time{font-size:11px}}
-.thumb{overflow:hidden;position:relative}.thumb img[hidden]{display:none}.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
+#stage-status{position:absolute;top:12px;left:12px;right:12px;z-index:6;margin:0;padding:10px 14px;border-radius:6px;color:#fff;background:#000b;pointer-events:none;font-size:14px}#stage-status[hidden]{display:none}.thumb{overflow:hidden;position:relative}.thumb img[hidden]{display:none}.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
 </style></head><body>
 <header><div class="brand"><span class="logo">${icons.play}</span>WebM Player</div><input id="search" type="search" placeholder="動画を検索" aria-label="動画一覧を検索"></header>
-<main><section aria-label="動画プレーヤー"><div class="stage"><video id="video" playsinline preload="metadata"></video><div class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / 0:00</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">再生画面にフォーカスすると、標準の動画コントロールをキーボードでも操作できます。</p></section>
+<main><section aria-label="動画プレーヤー"><div class="stage"><p id="stage-status" role="status">動画を読み込んでいます…</p><video id="video" playsinline preload="metadata"></video><div class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / --:--</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">再生画面にフォーカスすると、標準の動画コントロールをキーボードでも操作できます。</p></section>
 <aside><h2>ワークスペースの動画 <span id="count"></span></h2><div id="list"></div><p id="empty" hidden>一致する動画がありません。</p><p class="hint">WebMを最大200件表示。追加した動画はエディターを開き直すと反映されます。</p></aside></main>
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
@@ -120,11 +123,15 @@ function formatTime(seconds) {
  const minutes = Math.floor(seconds / 60);
  return minutes + ':' + String(Math.floor(seconds % 60)).padStart(2, '0');
 }
+function effectiveDuration() {
+ if (converting && knownDuration > 0) return knownDuration;
+ return Number.isFinite(video.duration) && video.duration > 0 ? video.duration : knownDuration;
+}
 function updatePlayback() {
  document.getElementById('play').innerHTML = video.paused ? icons.play : icons.pause;
  document.getElementById('play').setAttribute('aria-label', video.paused ? '再生' : '一時停止');
- document.getElementById('time').textContent = formatTime(video.currentTime) + ' / ' + formatTime(video.duration);
- document.getElementById('seek').value = video.duration > 0 ? String(video.currentTime / video.duration * 1000) : '0';
+ document.getElementById('time').textContent = formatTime(video.currentTime) + ' / ' + (effectiveDuration() > 0 ? formatTime(effectiveDuration()) : '--:--');
+ document.getElementById('seek').value = effectiveDuration() > 0 ? String(video.currentTime / effectiveDuration() * 1000) : '0';
  document.getElementById('mute').innerHTML = video.muted || video.volume === 0 ? icons.muted : icons.volume;
  document.getElementById('mute').setAttribute('aria-pressed', String(video.muted));
  document.getElementById('volume').value = String(video.volume);
@@ -136,14 +143,14 @@ async function startPlayback() {
  }
 }
 document.getElementById('play').addEventListener('click', async () => {
- if (preparing) { playRequested = true; document.getElementById('status').textContent = '互換動画を準備しています。完了後に再生します。'; return; }
+ if (preparing) { playRequested = true; document.getElementById('status').textContent = '互換動画を準備しています。再生可能になり次第、開始します。'; return; }
  if (video.paused) {
   playRequested = true;
   await startPlayback();
  } else { playRequested = false; video.pause(); }
 });
 document.getElementById('seek').addEventListener('input', event => {
- if (Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Number(event.target.value) / 1000 * video.duration;
+ if (!converting && effectiveDuration() > 0) video.currentTime = Number(event.target.value) / 1000 * effectiveDuration();
 });
 document.getElementById('mute').addEventListener('click', () => { video.muted = !video.muted; });
 document.getElementById('volume').addEventListener('input', event => { video.volume = Number(event.target.value); video.muted = video.volume === 0; });
@@ -154,8 +161,15 @@ let selected = ${initialIndex};
 let requestId = 0;
 let preparing = false;
 let playRequested = false;
+let converting = false;
+let knownDuration = 0;
 function select(index, compatible = false, resume = false) {
+ compatible = compatible || !!entries[index].converting;
  playRequested = resume;
+ converting = false; knownDuration = 0;
+ document.getElementById('stage-status').hidden = false;
+ document.getElementById('stage-status').textContent = compatible ? '互換再生の準備中… 最初の部分ができ次第、再生できます。' : '動画を読み込んでいます…';
+ document.getElementById('seek').disabled = true;
  selected = index;
  requestId++;
  preparing = !entries[index].issue && compatible && entries[index].canPrepare;
@@ -276,7 +290,9 @@ document.getElementById('loop').addEventListener('click', event => { video.loop 
 document.getElementById('retry').addEventListener('click', () => select(selected));
 document.getElementById('compatible').addEventListener('click', () => select(selected, true, playRequested || !video.paused));
 video.addEventListener('loadedmetadata', () => {
- document.getElementById('status').textContent = '再生ボタンを押すと再生します。音が出ない場合は「互換再生」を試してください。';
+ document.getElementById('stage-status').hidden = true;
+ document.getElementById('seek').disabled = converting;
+ document.getElementById('status').textContent = converting ? '再生しながら互換変換しています。変換完了後に全体をシークできます。' : '再生ボタンを押すと再生します。音が出ない場合は「互換再生」を試してください。';
  video.playbackRate = Number(document.getElementById('speed').value);
 });
 video.addEventListener('error', () => {
@@ -311,6 +327,9 @@ window.addEventListener('message', async event => {
  if (event.data?.requestId !== requestId) return;
  if (event.data.type === 'sourceReady') {
   preparing = false;
+  converting = !!event.data.converting;
+  knownDuration = Number.isFinite(event.data.duration) ? event.data.duration : 0;
+  entries[selected].converting = converting;
   document.getElementById('compatible').disabled = !entries[selected].canPrepare;
   entries[selected].src = event.data.src;
   video.src = event.data.src;
@@ -318,7 +337,22 @@ window.addEventListener('message', async event => {
   document.getElementById('status').textContent = '動画を読み込んでいます…';
   if (playRequested) await startPlayback();
  }
+ if (event.data.type === 'conversionProgress') {
+  const text = (preparing ? '互換再生の準備中' : '再生しながら変換中') + '（' + event.data.percent + '%）';
+  document.getElementById('status').textContent = text;
+  if (preparing) document.getElementById('stage-status').textContent = text + ' 最初の部分ができ次第、再生できます。';
+ }
+ if (event.data.type === 'conversionComplete') {
+  converting = false;
+  entries[selected].converting = false;
+  document.getElementById('seek').disabled = false;
+  document.getElementById('status').textContent = '互換変換が完了しました。';
+ }
  if (event.data.type === 'prepareError') {
+  converting = false;
+  entries[selected].converting = false;
+  document.getElementById('stage-status').hidden = false;
+  document.getElementById('stage-status').textContent = event.data.message;
   preparing = false;
   document.getElementById('compatible').disabled = !entries[selected].canPrepare;
   document.getElementById('status').textContent = event.data.message;

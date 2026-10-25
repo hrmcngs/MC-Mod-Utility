@@ -9,10 +9,12 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     const listeners = [];
     let finish;
     const prepared = new Promise(resolve => { finish = resolve; });
+    let finishConversion;
+    const completed = new Promise(resolve => { finishConversion = resolve; });
     Module._load = function(name, ...args) {
         if (name === 'vscode') return { workspace: { findFiles: async () => [{ ...uri, path: '/aaa.webm', fsPath: '/aaa.webm', toString: () => '/aaa.webm' }], asRelativePath: () => 'test.webm', fs: { stat: async () => ({ size: 2048 }) } }, Uri: { joinPath: () => uri } };
         if (name === './thumbnail') return { thumbnailData: async () => 'data:image/jpeg;base64,/9j/test' };
-        if (name === './compatibility') return { compatibleVideo: () => prepared };
+        if (name === './compatibility') return { prepareCompatibleVideo: async () => ({ path: '/cache/prepared.tmp', ready: prepared, done: completed, complete: false, duration: 120, subscribe: listener => { listener(35); return { dispose() {} }; } }) };
         return load.call(this, name, ...args);
     };
     const { renderPlayer } = require('../src/video/player');
@@ -74,12 +76,24 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     assert.equal(video.src, undefined);
     await document.getElementById('play').handlers.click();
     assert.equal(video.playCalls, 0, 'remembers the click instead of playing an empty source during conversion');
-    assert.match(document.getElementById('status').textContent, /完了後に再生/);
+    assert.match(document.getElementById('stage-status').textContent, /準備中/);
     finish('/cache/prepared.mp4');
     await task;
     assert.equal(registrations.at(-1).options.contentType, 'video/mp4');
     assert.equal(video.playCalls, 1, 'starts playback automatically once conversion completes');
     assert.equal(video.paused, false);
+    video.duration = 2; // The first fragment knows only its own short duration.
+    video.handlers.loadedmetadata();
+    video.handlers.durationchange();
+    assert.match(document.getElementById('time').textContent, /2:00/);
+    assert.equal(document.getElementById('seek').disabled, true, 'whole-video seeking waits for conversion');
+    document.getElementById('retry').handlers.click();
+    assert.equal(requests.at(-1).type, 'prepare', 'reselecting a streaming entry reconnects its duration and progress');
+    await listeners[0](requests.at(-1));
+    finishConversion('/cache/prepared.mp4');
+    await completed;
+    await Promise.resolve();
+    assert.equal(document.getElementById('seek').disabled, false);
     assert.equal(video.src, 'http://127.0.0.1/video');
     onMessage({ data: { type: 'sourceReady', requestId: 1, src: 'outdated' } });
     assert.equal(video.src, 'http://127.0.0.1/video');
