@@ -76,6 +76,14 @@ async function createVideoServer(onError = () => {}) {
             files.set(key, { path: file, contentType: options.contentType || 'video/webm', prepare: options.prepare, progressive: options.progressive });
             return origin + key;
         },
+        remove(url) {
+            const key = new URL(url).pathname;
+            const entry = files.get(key);
+            files.delete(key);
+            if (entry?.progressive && ![...files.values()].some(file => file.progressive === entry.progressive)) {
+                jobs.delete(entry.progressive); entry.progressive.release();
+            }
+        },
         dispose() { disposed = true; for (const job of jobs) job.release(); jobs.clear(); files.clear(); server.close(); server.closeAllConnections(); },
     };
 }

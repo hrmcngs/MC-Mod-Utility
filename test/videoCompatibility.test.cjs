@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { compatibleVideo } = require('../src/video/compatibility');
+const { compatibleVideo, prepareCompatibleVideo } = require('../src/video/compatibility');
 const { videoThumbnail, thumbnailData } = require('../src/video/thumbnail');
 let hasFFmpeg = true;
 try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); execFileSync('ffprobe', ['-version'], { stdio: 'ignore' }); } catch { hasFFmpeg = false; }
@@ -24,6 +24,16 @@ test('WebM fallback uses H.264 and MP3; silent clips and thumbnails work', { ski
         assert.equal(streams.find(s => s.codec_type === 'video').codec_name, 'h264');
         assert.equal(streams.find(s => s.codec_type === 'audio').codec_name, 'mp3');
         execFileSync('ffmpeg', ['-v', 'error', '-xerror', '-i', converted, '-f', 'null', '-']);
+        const seekJob = await prepareCompatibleVideo(source, cache, 0.2);
+        seekJob.retain();
+        try {
+            const seekFile = await seekJob.done;
+            assert.notEqual(seekFile, converted);
+            assert.equal(seekJob.offset, 0.2);
+            assert.ok(seekJob.duration >= 0.5);
+            execFileSync('ffmpeg', ['-v', 'error', '-xerror', '-i', seekFile, '-f', 'null', '-']);
+        } finally { seekJob.release(); }
+        await assert.rejects(prepareCompatibleVideo(source, cache, -1));
         const before = await fs.stat(converted);
         assert.equal(await compatibleVideo(source, cache), converted);
         assert.equal((await fs.stat(converted)).mtimeMs, before.mtimeMs);

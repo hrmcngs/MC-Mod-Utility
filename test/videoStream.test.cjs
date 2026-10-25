@@ -74,6 +74,12 @@ test('progressive MP4 sends playable bytes before conversion ends and supports r
         const seek = await fetch(url, { headers: { Range: 'bytes=6-9' } });
         assert.equal(seek.status, 206);
         assert.equal(await seek.text(), '6789');
+        const replacement = server.add(file, { contentType: 'video/mp4', progressive: job });
+        server.remove(url);
+        assert.equal(references, 1, 'reselecting the same conversion keeps it alive');
+        server.remove(replacement);
+        assert.equal(references, 0, 'stops retaining old conversions after a seek');
+        assert.equal((await fetch(url)).status, 404);
     } finally {
         finish(); server.dispose();
         assert.equal(references, 0);

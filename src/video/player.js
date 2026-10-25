@@ -57,6 +57,7 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
         canThumbnail: file.scheme === 'file',
         thumbnail: null,
     })));
+    let activeSource, activeProgress, latestPreparation;
     disposables.push(webview.onDidReceiveMessage(async message => {
         if (message.type === 'thumbnail' && Number.isInteger(message.index)) {
             const file = videos[message.index];
@@ -72,13 +73,21 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
         if (!streamServer || message.type !== 'prepare' || !Number.isInteger(message.index) || !Number.isSafeInteger(message.requestId)) return;
         const file = videos[message.index];
         if (!file || file.scheme !== 'file' || entries[message.index].issue) return;
+        const offset = message.position ?? 0;
+        if (!Number.isFinite(offset) || offset < 0) return;
+        latestPreparation = message.requestId;
+        activeProgress?.dispose();
         try {
-            const job = await prepareCompatibleVideo(file.fsPath, cacheDirectory);
+            const job = await prepareCompatibleVideo(file.fsPath, cacheDirectory, offset);
+            if (latestPreparation !== message.requestId) { job.retain(); job.release(); return; }
             const src = streamServer.add(job.path, { contentType: 'video/mp4', progressive: job });
-            disposables.push(job.subscribe(percent => { void webview.postMessage({ type: 'conversionProgress', requestId: message.requestId, percent }); }));
+            if (activeSource) streamServer.remove(activeSource);
+            activeSource = src;
+            activeProgress = job.subscribe(percent => { void webview.postMessage({ type: 'conversionProgress', requestId: message.requestId, percent }); });
+            disposables.push(activeProgress);
             job.done.then(() => webview.postMessage({ type: 'conversionComplete', requestId: message.requestId })).catch(error => webview.postMessage({ type: 'prepareError', requestId: message.requestId, message: error.message }));
             await job.ready;
-            await webview.postMessage({ type: 'sourceReady', requestId: message.requestId, src, duration: job.duration, converting: !job.complete });
+            await webview.postMessage({ type: 'sourceReady', requestId: message.requestId, src, duration: job.duration, offset: job.offset, converting: !job.complete });
         } catch (error) {
             await webview.postMessage({ type: 'prepareError', requestId: message.requestId, message: error.message });
         }
@@ -93,10 +102,10 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
 body.expanded{overflow:hidden}body.expanded header,body.expanded aside,body.expanded h1,body.expanded .path,body.expanded .hint{display:none}body.expanded main{display:block;max-width:none;padding:0}body.expanded video{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;aspect-ratio:auto;object-fit:contain;border-radius:0}body.expanded .toolbar{position:fixed;top:12px;right:12px;z-index:2;border:0;background:var(--vscode-editor-background);border-radius:8px;padding:8px;margin:0}body.expanded .toolbar>:not(#fullscreen):not(#windowFullscreen){display:none}body.expanded #status{position:fixed;top:70px;left:16px;right:16px;z-index:2}
 .playback{display:flex;align-items:center;gap:10px;padding:10px;background:var(--vscode-editor-background);border-radius:8px;flex-wrap:wrap}.playback input[type=range]{padding:0;border:0;border-radius:0;cursor:pointer;accent-color:#e53935}#seek{flex:1;min-width:90px;max-width:none}#volume{width:90px}#time{font-variant-numeric:tabular-nums;font-size:12px}body.expanded .playback{position:fixed;bottom:0;left:0;right:0;z-index:3;border-radius:0}body.expanded{background:#000}body.expanded video{height:100vh}body.expanded .toolbar{display:none}body.expanded .playback{color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.85));padding:35px 20px 15px;transition:opacity .2s}body.expanded .playback button{color:#fff;background:transparent}body.expanded.controls-hidden{cursor:none}body.expanded.controls-hidden .playback{opacity:0;pointer-events:none}body.expanded #expandControl{display:none}
 .stage{position:relative;width:100%;aspect-ratio:16/9;max-height:70vh;background:#000;border-radius:12px;overflow:hidden}.stage video{display:block;width:100%;height:100%;max-height:none;aspect-ratio:auto;object-fit:contain}.playback{position:absolute;bottom:0;left:0;right:0;z-index:5;display:flex;flex-wrap:wrap;gap:6px;padding:36px 16px 10px;background:linear-gradient(transparent,rgba(0,0,0,.8));color:#fff;border-radius:0;transition:opacity .18s}.playback button{background:transparent;color:#fff;border-radius:4px;min-width:38px;height:36px;padding:4px;font-size:23px}.playback button:hover{background:rgba(255,255,255,.18)}#seek{order:-1;flex:none;width:100%;height:16px;min-width:0;margin:0;accent-color:#f03;cursor:pointer}#volume{width:74px;accent-color:#fff;background:transparent}#time{font-size:13px;margin-left:8px;white-space:nowrap}#mute{order:1}#volume{order:2}#time{order:3}#expandControl{order:4;margin-left:auto}#fullControl{order:5}.controls-hidden .playback{opacity:0;pointer-events:none}.stage .playback:has(:focus-visible){opacity:1;pointer-events:auto}body.expanded .stage{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;border-radius:0}body.expanded .stage video{position:absolute;inset:0;width:100%;height:100%}body.expanded #fullControl{margin-left:auto}body.expanded .playback{position:absolute;padding:36px 20px 14px}@media(max-width:500px){#volume{width:50px}.playback{padding-left:8px;padding-right:8px;gap:3px}#time{font-size:11px}}
-#stage-status{position:absolute;top:12px;left:12px;right:12px;z-index:6;margin:0;padding:10px 14px;border-radius:6px;color:#fff;background:#000b;pointer-events:none;font-size:14px}#stage-status[hidden]{display:none}.thumb{overflow:hidden;position:relative}.thumb img[hidden]{display:none}.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
+#play{min-width:48px;height:44px;touch-action:manipulation}.stage video{touch-action:manipulation;user-select:none}#hold-speed{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:7;padding:7px 14px;border-radius:20px;background:#000b;color:white;pointer-events:none}#hold-speed[hidden]{display:none}#stage-status{position:absolute;top:12px;left:12px;right:12px;z-index:6;margin:0;padding:10px 14px;border-radius:6px;color:#fff;background:#000b;pointer-events:none;font-size:14px}#stage-status[hidden]{display:none}.thumb{overflow:hidden;position:relative}.thumb img[hidden]{display:none}.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
 </style></head><body>
 <header><div class="brand"><span class="logo">${icons.play}</span>WebM Player</div><input id="search" type="search" placeholder="動画を検索" aria-label="動画一覧を検索"></header>
-<main><section aria-label="動画プレーヤー"><div class="stage"><p id="stage-status" role="status">動画を読み込んでいます…</p><video id="video" playsinline preload="metadata"></video><div class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / --:--</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">再生画面にフォーカスすると、標準の動画コントロールをキーボードでも操作できます。</p></section>
+<main><section aria-label="動画プレーヤー"><div class="stage"><p id="stage-status" role="status">動画を読み込んでいます…</p><span id="hold-speed" hidden>2倍速 ▶▶</span><video id="video" playsinline preload="metadata"></video><div id="playback-controls" class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / --:--</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">画面をクリックで再生・一時停止。再生中に長押しすると、押している間だけ2倍速になります。</p></section>
 <aside><h2>ワークスペースの動画 <span id="count"></span></h2><div id="list"></div><p id="empty" hidden>一致する動画がありません。</p><p class="hint">WebMを最大200件表示。追加した動画はエディターを開き直すと反映されます。</p></aside></main>
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
@@ -104,6 +113,7 @@ const entries = ${data};
 const icons = ${JSON.stringify(icons)};
 const video = document.getElementById('video');
 const list = document.getElementById('list');
+let renderedPlayIcon = '', renderedMuteIcon = '';
 const thumbnailImages = new Map();
 const thumbnailTargets = new WeakMap();
 function requestThumbnail(index) {
@@ -124,34 +134,105 @@ function formatTime(seconds) {
  return minutes + ':' + String(Math.floor(seconds % 60)).padStart(2, '0');
 }
 function effectiveDuration() {
- if (converting && knownDuration > 0) return knownDuration;
+ if (knownDuration > 0) return knownDuration;
  return Number.isFinite(video.duration) && video.duration > 0 ? video.duration : knownDuration;
 }
 function updatePlayback() {
- document.getElementById('play').innerHTML = video.paused ? icons.play : icons.pause;
- document.getElementById('play').setAttribute('aria-label', video.paused ? '再生' : '一時停止');
- document.getElementById('time').textContent = formatTime(video.currentTime) + ' / ' + (effectiveDuration() > 0 ? formatTime(effectiveDuration()) : '--:--');
- document.getElementById('seek').value = effectiveDuration() > 0 ? String(video.currentTime / effectiveDuration() * 1000) : '0';
- document.getElementById('mute').innerHTML = video.muted || video.volume === 0 ? icons.muted : icons.volume;
+ const active = playRequested || !video.paused;
+ const playIcon = active ? 'pause' : 'play';
+ if (playIcon !== renderedPlayIcon) { document.getElementById('play').innerHTML = icons[playIcon]; renderedPlayIcon = playIcon; }
+ document.getElementById('play').setAttribute('aria-label', active ? '一時停止' : '再生');
+ document.getElementById('play').setAttribute('aria-pressed', String(active));
+ document.getElementById('time').textContent = formatTime(playbackOffset + (video.currentTime || 0)) + ' / ' + (effectiveDuration() > 0 ? formatTime(effectiveDuration()) : '--:--');
+ if (!scrubbing) document.getElementById('seek').value = effectiveDuration() > 0 ? String((playbackOffset + (video.currentTime || 0)) / effectiveDuration() * 1000) : '0';
+ const muteIcon = video.muted || video.volume === 0 ? 'muted' : 'volume';
+ if (muteIcon !== renderedMuteIcon) { document.getElementById('mute').innerHTML = icons[muteIcon]; renderedMuteIcon = muteIcon; }
  document.getElementById('mute').setAttribute('aria-pressed', String(video.muted));
  document.getElementById('volume').value = String(video.volume);
 }
 async function startPlayback() {
  const currentRequest = requestId;
+ const action = ++playbackAction;
  try { await video.play(); } catch (error) {
-  if (currentRequest === requestId && !preparing) document.getElementById('status').textContent = '再生できません: ' + error.message;
+  if (currentRequest === requestId && action === playbackAction && !preparing && playRequested) {
+   playRequested = false; updatePlayback();
+   document.getElementById('status').textContent = '再生できません: ' + error.message;
+  }
  }
 }
-document.getElementById('play').addEventListener('click', async () => {
- if (preparing) { playRequested = true; document.getElementById('status').textContent = '互換動画を準備しています。再生可能になり次第、開始します。'; return; }
- if (video.paused) {
-  playRequested = true;
-  await startPlayback();
- } else { playRequested = false; video.pause(); }
+async function togglePlayback() {
+ if (playRequested || !video.paused) {
+  playRequested = false; playbackAction++; cancelVideoPress(); video.pause(); updatePlayback(); showControls(); return;
+ }
+ playRequested = true; updatePlayback(); showControls();
+ if (preparing) {
+  document.getElementById('status').textContent = '互換動画を準備しています。再生可能になり次第、開始します。'; return;
+ }
+ await startPlayback();
+}
+document.getElementById('play').addEventListener('click', togglePlayback);
+let videoPress = null;
+let suppressVideoClick = false;
+function cancelVideoPress() {
+ if (!videoPress) return;
+ clearTimeout(videoPress.timer);
+ if (videoPress.held) video.playbackRate = videoPress.rate;
+ videoPress = null;
+ document.getElementById('hold-speed').hidden = true;
+}
+video.addEventListener('pointerdown', event => {
+ if (event.button !== 0 || event.isPrimary === false) return;
+ cancelVideoPress(); suppressVideoClick = false;
+ videoPress = { id: event.pointerId, x: event.clientX, y: event.clientY, held: false, rate: video.playbackRate };
+ const press = videoPress;
+ press.timer = setTimeout(() => {
+  if (videoPress !== press || video.paused || preparing) return;
+  press.held = true; press.rate = video.playbackRate;
+  video.playbackRate = 2;
+  document.getElementById('hold-speed').hidden = false;
+  clearTimeout(hideControlsTimer);
+ }, 400);
+ try { video.setPointerCapture(event.pointerId); } catch { /* Synthetic events may have no active pointer. */ }
 });
+video.addEventListener('pointermove', event => {
+ if (!videoPress || event.pointerId !== videoPress.id || videoPress.held) return;
+ if (Math.hypot(event.clientX - videoPress.x, event.clientY - videoPress.y) > 12) {
+  suppressVideoClick = true; cancelVideoPress();
+ }
+});
+video.addEventListener('pointerup', event => {
+ if (!videoPress || event.pointerId !== videoPress.id) return;
+ suppressVideoClick = videoPress.held;
+ cancelVideoPress(); showControls();
+});
+for (const event of ['pointercancel', 'lostpointercapture']) video.addEventListener(event, cancelVideoPress);
+window.addEventListener('blur', cancelVideoPress);
+video.addEventListener('contextmenu', event => { if (videoPress?.held) event.preventDefault(); });
+video.addEventListener('click', event => {
+ if (suppressVideoClick) { suppressVideoClick = false; event.preventDefault(); return; }
+ void togglePlayback();
+});
+video.addEventListener('pause', cancelVideoPress);
+video.addEventListener('ended', () => { playRequested = false; cancelVideoPress(); updatePlayback(); showControls(); });
 document.getElementById('seek').addEventListener('input', event => {
- if (!converting && effectiveDuration() > 0) video.currentTime = Number(event.target.value) / 1000 * effectiveDuration();
+ scrubbing = true;
+ document.getElementById('time').textContent = formatTime(Number(event.target.value) / 1000 * effectiveDuration()) + ' / ' + formatTime(effectiveDuration());
 });
+document.getElementById('seek').addEventListener('change', event => {
+ const duration = effectiveDuration();
+ const position = Math.max(0, Math.min(Math.max(0, duration - 0.1), Number(event.target.value) / 1000 * duration));
+ scrubbing = false;
+ if (!(duration > 0)) return;
+ const local = position - playbackOffset;
+ let available = !converting && playbackOffset === 0;
+ const buffered = video.buffered;
+ if (buffered) for (let i = 0; i < buffered.length; i++) {
+  if (local >= buffered.start(i) && local <= buffered.end(i)) available = true;
+ }
+ if (available) { video.currentTime = local; updatePlayback(); }
+ else if (entries[selected].canPrepare) select(selected, true, playRequested || !video.paused, position);
+});
+document.getElementById('seek').addEventListener('blur', () => { scrubbing = false; updatePlayback(); });
 document.getElementById('mute').addEventListener('click', () => { video.muted = !video.muted; });
 document.getElementById('volume').addEventListener('input', event => { video.volume = Number(event.target.value); video.muted = video.volume === 0; });
 document.getElementById('expandControl').addEventListener('click', () => expandVideo(!document.body.classList.contains('expanded')));
@@ -161,15 +242,19 @@ let selected = ${initialIndex};
 let requestId = 0;
 let preparing = false;
 let playRequested = false;
+let playbackAction = 0;
 let converting = false;
 let knownDuration = 0;
-function select(index, compatible = false, resume = false) {
- compatible = compatible || !!entries[index].converting;
+let playbackOffset = 0;
+let scrubbing = false;
+function select(index, compatible = false, resume = false, position = 0) {
+ cancelVideoPress(); playbackAction++;
+ compatible = compatible || !!entries[index].converting || !!entries[index].offset || !!entries[index].prepared;
  playRequested = resume;
- converting = false; knownDuration = 0;
+ converting = false; knownDuration = entries[index].duration || 0; playbackOffset = position; scrubbing = false;
  document.getElementById('stage-status').hidden = false;
  document.getElementById('stage-status').textContent = compatible ? '互換再生の準備中… 最初の部分ができ次第、再生できます。' : '動画を読み込んでいます…';
- document.getElementById('seek').disabled = true;
+ document.getElementById('seek').disabled = !(knownDuration > 0);
  selected = index;
  requestId++;
  preparing = !entries[index].issue && compatible && entries[index].canPrepare;
@@ -186,7 +271,7 @@ function select(index, compatible = false, resume = false) {
  } else if (preparing) {
  video.removeAttribute('src');
  video.load();
- vscode.postMessage({ type: 'prepare', index, requestId });
+ vscode.postMessage({ type: 'prepare', index, requestId, position });
  } else {
  video.src = entries[index].src;
  video.load();
@@ -229,10 +314,16 @@ function draw() {
 let immersive = false;
 let usingHostFullscreen = false;
 let hideControlsTimer;
+let controlsHovered = false, controlsFocused = false;
+const playbackControls = document.getElementById('playback-controls');
+playbackControls.addEventListener('pointerenter', () => { controlsHovered = true; showControls(); });
+playbackControls.addEventListener('pointerleave', () => { controlsHovered = false; showControls(); });
+playbackControls.addEventListener('focusin', () => { controlsFocused = true; showControls(); });
+playbackControls.addEventListener('focusout', () => { controlsFocused = false; showControls(); });
 function showControls() {
  document.body.classList.remove('controls-hidden');
  clearTimeout(hideControlsTimer);
- if (!video.paused) hideControlsTimer = setTimeout(() => document.body.classList.add('controls-hidden'), 2500);
+ if (!video.paused && !controlsHovered && !controlsFocused && !videoPress?.held) hideControlsTimer = setTimeout(() => document.body.classList.add('controls-hidden'), 2500);
 }
 async function exitFullscreen() {
  immersive = false;
@@ -285,14 +376,17 @@ document.addEventListener('keydown', event => {
 });
 document.getElementById('search').addEventListener('input', draw);
 document.getElementById('open').addEventListener('click', () => vscode.postMessage({type:'open'}));
-document.getElementById('speed').addEventListener('change', event => { video.playbackRate = Number(event.target.value); });
+document.getElementById('speed').addEventListener('change', event => {
+ const rate = Number(event.target.value);
+ if (videoPress?.held) videoPress.rate = rate; else video.playbackRate = rate;
+});
 document.getElementById('loop').addEventListener('click', event => { video.loop = !video.loop; event.currentTarget.setAttribute('aria-pressed', String(video.loop)); });
 document.getElementById('retry').addEventListener('click', () => select(selected));
 document.getElementById('compatible').addEventListener('click', () => select(selected, true, playRequested || !video.paused));
 video.addEventListener('loadedmetadata', () => {
  document.getElementById('stage-status').hidden = true;
- document.getElementById('seek').disabled = converting;
- document.getElementById('status').textContent = converting ? '再生しながら互換変換しています。変換完了後に全体をシークできます。' : '再生ボタンを押すと再生します。音が出ない場合は「互換再生」を試してください。';
+ document.getElementById('seek').disabled = !(effectiveDuration() > 0);
+ document.getElementById('status').textContent = converting ? '再生しながら互換変換しています。スライダーで再生位置を変更できます。' : '再生ボタンを押すと再生します。音が出ない場合は「互換再生」を試してください。';
  video.playbackRate = Number(document.getElementById('speed').value);
 });
 video.addEventListener('error', () => {
@@ -323,14 +417,19 @@ window.addEventListener('message', async event => {
   }
   return;
  }
- if (event.data?.type === 'pause') { playRequested = false; video.pause(); }
+ if (event.data?.type === 'pause') { playRequested = false; playbackAction++; video.pause(); }
  if (event.data?.requestId !== requestId) return;
  if (event.data.type === 'sourceReady') {
   preparing = false;
   converting = !!event.data.converting;
-  knownDuration = Number.isFinite(event.data.duration) ? event.data.duration : 0;
+  knownDuration = Number.isFinite(event.data.duration) ? event.data.duration : knownDuration;
+  playbackOffset = Number.isFinite(event.data.offset) ? event.data.offset : 0;
+  entries[selected].duration = knownDuration;
+  entries[selected].offset = playbackOffset;
+  entries[selected].prepared = true;
   entries[selected].converting = converting;
   document.getElementById('compatible').disabled = !entries[selected].canPrepare;
+  document.getElementById('seek').disabled = !(effectiveDuration() > 0);
   entries[selected].src = event.data.src;
   video.src = event.data.src;
   video.load();
@@ -358,7 +457,7 @@ window.addEventListener('message', async event => {
   document.getElementById('status').textContent = event.data.message;
  }
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden) { playRequested = false; video.pause(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playRequested = false; playbackAction++; video.pause(); } });
 select(${initialIndex});
 </script></body></html>`;
 }
