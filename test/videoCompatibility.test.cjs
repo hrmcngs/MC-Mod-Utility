@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { compatibleVideo } = require('../src/video/compatibility');
-const { videoThumbnail } = require('../src/video/thumbnail');
+const { videoThumbnail, thumbnailData } = require('../src/video/thumbnail');
 let hasFFmpeg = true;
 try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); execFileSync('ffprobe', ['-version'], { stdio: 'ignore' }); } catch { hasFFmpeg = false; }
 const probe = file => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', file]));
@@ -33,6 +33,9 @@ test('WebM keeps its video and plays with Opus audio; silent clips and thumbnail
         assert.equal(probe(thumbnail).streams[0].codec_name, 'mjpeg');
         assert.equal(probe(thumbnail).streams[0].width, 320);
         assert.equal(await videoThumbnail(source, cache), thumbnail);
+        const data = await thumbnailData(source, cache);
+        assert.match(data, /^data:image\/jpeg;base64,/);
+        assert.deepEqual(Buffer.from(data.split(',')[1], 'base64'), await fs.readFile(thumbnail));
         const silent = path.join(dir, 'silent.webm');
         execFileSync('ffmpeg', ['-v', 'error', '-i', source, '-an', '-c:v', 'copy', silent]);
         assert.equal(probe(await compatibleVideo(silent, cache)).streams.length, 1);

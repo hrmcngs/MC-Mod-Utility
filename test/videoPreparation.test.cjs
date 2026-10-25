@@ -11,6 +11,7 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     const prepared = new Promise(resolve => { finish = resolve; });
     Module._load = function(name, ...args) {
         if (name === 'vscode') return { workspace: { findFiles: async () => [{ ...uri, path: '/aaa.webm', fsPath: '/aaa.webm', toString: () => '/aaa.webm' }], asRelativePath: () => 'test.webm', fs: { stat: async () => ({ size: 2048 }) } }, Uri: { joinPath: () => uri } };
+        if (name === './thumbnail') return { thumbnailData: async () => 'data:image/jpeg;base64,/9j/test' };
         if (name === './compatibility') return { compatibleVideo: () => prepared };
         return load.call(this, name, ...args);
     };
@@ -32,23 +33,39 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     document.getElementById('search').value = '';
     const requests = [];
     let onMessage;
+    let observer;
+    class IntersectionObserver {
+        constructor(callback) { this.callback = callback; this.targets = []; observer = this; }
+        observe(target) { this.targets.push(target); }
+        unobserve() {}
+        disconnect() { this.targets = []; }
+    }
     const webview = { cspSource: 'test:', asWebviewUri: () => uri, onDidReceiveMessage: callback => { listeners.push(callback); return { dispose() {} }; }, postMessage: async data => onMessage({ data }) };
     let registered = 0;
     const registrations = [];
     await renderPlayer(webview, uri, { origin: 'http://127.0.0.1', add: (file, options) => { registered++; registrations.push({ file, options }); return 'http://127.0.0.1/video'; } }, '/cache', []);
     const script = webview.html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)[1];
-    vm.runInNewContext(script, { document, window: { addEventListener: (_, callback) => { onMessage = callback; } }, setTimeout: () => 1, clearTimeout() {}, acquireVsCodeApi: () => ({ postMessage: data => requests.push(data) }) });
+    vm.runInNewContext(script, { document, IntersectionObserver, window: { addEventListener: (_, callback) => { onMessage = callback; } }, setTimeout: () => 1, clearTimeout() {}, acquireVsCodeApi: () => ({ postMessage: data => requests.push(data) }) });
     const video = document.getElementById('video');
     assert.equal(video.src, 'http://127.0.0.1/video', 'original video loads without waiting for conversion');
-    assert.equal(requests.length, 0, 'does not start a conversion on open');
-    assert.equal(video.poster, 'http://127.0.0.1/video');
-    assert.equal(registered, 4, 'registers original videos and lazy thumbnails');
-    assert.equal(registrations.find(item => item.options?.contentType === 'image/jpeg').options.contentType, 'image/jpeg');
-    assert.equal(typeof registrations.find(item => item.options?.contentType === 'image/jpeg').options.prepare, 'function');
-    assert.match(webview.html, /img-src test: http:\/\/127.0.0.1/);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].type, 'thumbnail', 'opening only prepares a thumbnail, never converts the video');
+    assert.equal(requests[0].index, 1);
+    await listeners[0](requests.shift());
+    assert.equal(video.poster, 'data:image/jpeg;base64,/9j/test');
+    assert.equal(registered, 2, 'only videos use the HTTP server');
+    assert.match(webview.html, /img-src test: data:/);
     const image = document.getElementById('list').children[0].children[0].children[0];
-    assert.equal(image.loading, 'lazy');
-    assert.equal(image.src, 'http://127.0.0.1/video');
+    assert.equal(image.hidden, true, 'waits for thumbnail data');
+    observer.callback([{ target: observer.targets[0], isIntersecting: true }]);
+    assert.equal(requests[0].type, 'thumbnail');
+    await listeners[0](requests.shift());
+    assert.equal(image.src, 'data:image/jpeg;base64,/9j/test');
+    assert.equal(image.hidden, false, 'displays the actual image after receiving data');
+    document.getElementById('search').handlers.input();
+    const restored = document.getElementById('list').children[0].children[0].children[0];
+    assert.equal(restored.src, image.src, 'keeps thumbnails when the list redraws');
+    assert.equal(restored.hidden, false);
     document.getElementById('compatible').handlers.click();
     assert.equal(video.src, undefined);
     assert.equal(requests[0].index, 1, 'opens the selected file without moving it ahead of alphabetically earlier files');
