@@ -74,7 +74,7 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
         if (!file || file.scheme !== 'file' || entries[message.index].issue) return;
         try {
             const prepared = await compatibleVideo(file.fsPath, cacheDirectory);
-            const src = streamServer.add(prepared, { contentType: 'video/webm' });
+            const src = streamServer.add(prepared, { contentType: 'video/mp4' });
             await webview.postMessage({ type: 'sourceReady', requestId: message.requestId, src });
         } catch (error) {
             await webview.postMessage({ type: 'prepareError', requestId: message.requestId, message: error.message });
@@ -129,11 +129,18 @@ function updatePlayback() {
  document.getElementById('mute').setAttribute('aria-pressed', String(video.muted));
  document.getElementById('volume').value = String(video.volume);
 }
+async function startPlayback() {
+ const currentRequest = requestId;
+ try { await video.play(); } catch (error) {
+  if (currentRequest === requestId && !preparing) document.getElementById('status').textContent = '再生できません: ' + error.message;
+ }
+}
 document.getElementById('play').addEventListener('click', async () => {
- if (preparing) { document.getElementById('status').textContent = '互換動画を準備しています。完了までお待ちください。'; return; }
+ if (preparing) { playRequested = true; document.getElementById('status').textContent = '互換動画を準備しています。完了後に再生します。'; return; }
  if (video.paused) {
-  try { await video.play(); } catch (error) { document.getElementById('status').textContent = '再生できません: ' + error.message; }
- } else video.pause();
+  playRequested = true;
+  await startPlayback();
+ } else { playRequested = false; video.pause(); }
 });
 document.getElementById('seek').addEventListener('input', event => {
  if (Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Number(event.target.value) / 1000 * video.duration;
@@ -146,7 +153,9 @@ for (const event of ['timeupdate', 'durationchange', 'play', 'pause', 'volumecha
 let selected = ${initialIndex};
 let requestId = 0;
 let preparing = false;
-function select(index, compatible = false) {
+let playRequested = false;
+function select(index, compatible = false, resume = false) {
+ playRequested = resume;
  selected = index;
  requestId++;
  preparing = !entries[index].issue && compatible && entries[index].canPrepare;
@@ -155,7 +164,7 @@ function select(index, compatible = false) {
  video.poster = entries[index].thumbnail || '';
  video.pause();
  document.getElementById('status').textContent = preparing
-  ? '互換動画を準備しています…（音声を変換しています）'
+  ? '互換動画を準備しています…（映像と音声を変換しています）'
   : '動画を読み込んでいます…';
  if (entries[index].issue) {
   video.removeAttribute('src');
@@ -265,14 +274,14 @@ document.getElementById('open').addEventListener('click', () => vscode.postMessa
 document.getElementById('speed').addEventListener('change', event => { video.playbackRate = Number(event.target.value); });
 document.getElementById('loop').addEventListener('click', event => { video.loop = !video.loop; event.currentTarget.setAttribute('aria-pressed', String(video.loop)); });
 document.getElementById('retry').addEventListener('click', () => select(selected));
-document.getElementById('compatible').addEventListener('click', () => select(selected, true));
+document.getElementById('compatible').addEventListener('click', () => select(selected, true, playRequested || !video.paused));
 video.addEventListener('loadedmetadata', () => {
  document.getElementById('status').textContent = '再生ボタンを押すと再生します。音が出ない場合は「互換再生」を試してください。';
  video.playbackRate = Number(document.getElementById('speed').value);
 });
 video.addEventListener('error', () => {
  if (entries[selected].issue || preparing) return;
- if (entries[selected].canPrepare && !entries[selected].compatibilityAttempted) { select(selected, true); return; }
+ if (entries[selected].canPrepare && !entries[selected].compatibilityAttempted) { select(selected, true, playRequested || !video.paused); return; }
  const error = video.error;
  const reasons = {
   1: '読み込みが中断されました。再読み込みを試してください。',
@@ -282,7 +291,7 @@ video.addEventListener('error', () => {
  };
  document.getElementById('status').textContent = '再生エラー: ' + (reasons[error?.code] || '原因不明') + ' [code=' + (error?.code ?? 'unknown') + '] ' + (error?.message || '');
 });
-window.addEventListener('message', event => {
+window.addEventListener('message', async event => {
  if (event.data?.type === 'thumbnailReady' || event.data?.type === 'thumbnailError') {
   const { index, src, message } = event.data;
   if (!Number.isInteger(index) || !entries[index]) return;
@@ -298,7 +307,7 @@ window.addEventListener('message', event => {
   }
   return;
  }
- if (event.data?.type === 'pause') video.pause();
+ if (event.data?.type === 'pause') { playRequested = false; video.pause(); }
  if (event.data?.requestId !== requestId) return;
  if (event.data.type === 'sourceReady') {
   preparing = false;
@@ -307,6 +316,7 @@ window.addEventListener('message', event => {
   video.src = event.data.src;
   video.load();
   document.getElementById('status').textContent = '動画を読み込んでいます…';
+  if (playRequested) await startPlayback();
  }
  if (event.data.type === 'prepareError') {
   preparing = false;
@@ -314,7 +324,7 @@ window.addEventListener('message', event => {
   document.getElementById('status').textContent = event.data.message;
  }
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden) video.pause(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { playRequested = false; video.pause(); } });
 select(${initialIndex});
 </script></body></html>`;
 }

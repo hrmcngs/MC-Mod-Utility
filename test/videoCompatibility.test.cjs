@@ -10,7 +10,7 @@ let hasFFmpeg = true;
 try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); execFileSync('ffprobe', ['-version'], { stdio: 'ignore' }); } catch { hasFFmpeg = false; }
 const probe = file => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', file]));
 
-test('WebM keeps its video and plays with Opus audio; silent clips and thumbnails work', { skip: !hasFFmpeg }, async () => {
+test('WebM fallback uses H.264 and MP3; silent clips and thumbnails work', { skip: !hasFFmpeg }, async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'webm-compat-'));
     const cache = path.join(dir, 'cache');
     try {
@@ -18,13 +18,10 @@ test('WebM keeps its video and plays with Opus audio; silent clips and thumbnail
         execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:size=160x90:rate=10', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '0.5', '-c:v', 'libvpx', '-c:a', 'libopus', source]);
         const [converted, duplicate] = await Promise.all([compatibleVideo(source, cache), compatibleVideo(source, cache)]);
         assert.equal(converted, duplicate);
-        assert.equal(path.extname(converted), '.webm');
+        assert.equal(path.extname(converted), '.mp4');
         const streams = probe(converted).streams;
-        assert.equal(streams.find(s => s.codec_type === 'video').codec_name, 'vp8');
-        assert.equal(streams.find(s => s.codec_type === 'audio').codec_name, 'opus');
-        // A bit-exact decoded frame confirms the video was preserved.
-        const frame = file => execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-map', '0:v:0', '-frames:v', '1', '-f', 'md5', '-']).toString();
-        assert.equal(frame(converted), frame(source));
+        assert.equal(streams.find(s => s.codec_type === 'video').codec_name, 'h264');
+        assert.equal(streams.find(s => s.codec_type === 'audio').codec_name, 'mp3');
         execFileSync('ffmpeg', ['-v', 'error', '-xerror', '-i', converted, '-f', 'null', '-']);
         const before = await fs.stat(converted);
         assert.equal(await compatibleVideo(source, cache), converted);

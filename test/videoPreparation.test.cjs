@@ -18,11 +18,12 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     const { renderPlayer } = require('../src/video/player');
     Module._load = load;
     class Element {
-        constructor() { this.value = '1'; this.handlers = {}; this.childElementCount = 0; this.children = []; }
+        constructor() { this.value = '1'; this.paused = true; this.playCalls = 0; this.handlers = {}; this.childElementCount = 0; this.children = []; }
         addEventListener(name, handler) { this.handlers[name] = handler; }
         setAttribute() {}
         removeAttribute(name) { delete this[name]; }
-        pause() {}
+        pause() { this.paused = true; }
+        async play() { this.playCalls++; this.paused = false; }
         load() {}
         append(...children) { this.children.push(...children); this.childElementCount = this.children.length; }
         replaceChildren() { this.children = []; this.childElementCount = 0; }
@@ -71,9 +72,14 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     assert.equal(requests[0].index, 1, 'opens the selected file without moving it ahead of alphabetically earlier files');
     const task = listeners[0](requests[0]);
     assert.equal(video.src, undefined);
-    finish('/cache/prepared.webm');
+    await document.getElementById('play').handlers.click();
+    assert.equal(video.playCalls, 0, 'remembers the click instead of playing an empty source during conversion');
+    assert.match(document.getElementById('status').textContent, /完了後に再生/);
+    finish('/cache/prepared.mp4');
     await task;
-    assert.equal(registrations.at(-1).options.contentType, 'video/webm');
+    assert.equal(registrations.at(-1).options.contentType, 'video/mp4');
+    assert.equal(video.playCalls, 1, 'starts playback automatically once conversion completes');
+    assert.equal(video.paused, false);
     assert.equal(video.src, 'http://127.0.0.1/video');
     onMessage({ data: { type: 'sourceReady', requestId: 1, src: 'outdated' } });
     assert.equal(video.src, 'http://127.0.0.1/video');

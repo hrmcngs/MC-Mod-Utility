@@ -6,18 +6,18 @@ const { promisify } = require('node:util');
 const run = promisify(execFile);
 const pending = new Map();
 
-// Keep WebM video intact and use Opus audio, avoiding MP4 codec dependencies.
+// VS Code can reject WebM at the demuxer; use H.264 video and MP3 audio for fallback.
 async function compatibleVideo(file, cacheDirectory) {
     const stat = await fs.stat(file);
-    const key = crypto.createHash('sha256').update(JSON.stringify(['webm-opus-v4', file, stat.size, stat.mtimeMs])).digest('hex');
-    const target = path.join(cacheDirectory, key + '.webm');
+    const key = crypto.createHash('sha256').update(JSON.stringify(['h264-mp3-v5', file, stat.size, stat.mtimeMs])).digest('hex');
+    const target = path.join(cacheDirectory, key + '.mp4');
     if (pending.has(target)) return pending.get(target);
     const task = (async () => {
         await fs.mkdir(cacheDirectory, { recursive: true });
         try { await fs.access(target); return target; } catch { /* Cache miss. */ }
         const temporary = target + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
         try {
-            await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'libopus', '-b:a', '128k', '-f', 'webm', temporary], { timeout: 30 * 60 * 1000, maxBuffer: 1024 * 1024 });
+            await run('ffmpeg', ['-nostdin', '-v', 'error', '-i', file, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2', '-pix_fmt', 'yuv420p', '-threads', '2', '-c:a', 'libmp3lame', '-b:a', '128k', '-movflags', '+faststart', '-f', 'mp4', temporary], { timeout: 30 * 60 * 1000, maxBuffer: 1024 * 1024 });
             await fs.rename(temporary, target);
             return target;
         } catch (error) {
