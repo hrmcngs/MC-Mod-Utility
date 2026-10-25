@@ -8,16 +8,17 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     const uri = { scheme: 'file', fsPath: '/test.webm', path: '/test.webm', toString: () => '/test.webm' };
     const listeners = [];
     let finish;
+    let providerOptions;
     const prepared = new Promise(resolve => { finish = resolve; });
     let finishConversion;
     const completed = new Promise(resolve => { finishConversion = resolve; });
     Module._load = function(name, ...args) {
-        if (name === 'vscode') return { workspace: { findFiles: async () => [{ ...uri, path: '/aaa.webm', fsPath: '/aaa.webm', toString: () => '/aaa.webm' }], asRelativePath: () => 'test.webm', fs: { stat: async () => ({ size: 2048 }) } }, Uri: { joinPath: () => uri } };
+        if (name === 'vscode') return { commands: { registerCommand: () => ({ dispose() {} }) }, window: { registerCustomEditorProvider: (_id, _provider, options) => { providerOptions = options; return { dispose() {} }; } }, workspace: { findFiles: async () => [{ ...uri, path: '/aaa.webm', fsPath: '/aaa.webm', toString: () => '/aaa.webm' }], asRelativePath: () => 'test.webm', fs: { stat: async () => ({ size: 2048 }) } }, Uri: { joinPath: () => uri } };
         if (name === './thumbnail') return { thumbnailData: async () => 'data:image/jpeg;base64,/9j/test' };
         if (name === './compatibility') return { prepareCompatibleVideo: async (_file, _cache, position) => ({ offset: position, path: '/cache/prepared.tmp', ready: prepared, done: completed, complete: false, duration: 120, subscribe: listener => { listener(35); return { dispose() {} }; } }) };
         return load.call(this, name, ...args);
     };
-    const { renderPlayer } = require('../src/video/player');
+    const { renderPlayer, registerVideoPlayer } = require('../src/video/player');
     Module._load = load;
     class Element {
         constructor() { this.attributes = {}; this.value = '1'; this.paused = true; this.playCalls = 0; this.handlers = {}; this.childElementCount = 0; this.children = []; }
@@ -34,7 +35,8 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     }
     const elements = new Map();
     const classes = new Set();
-    const document = { body: { classList: { toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name), contains: name => classes.has(name), add: name => classes.add(name), remove: name => classes.delete(name) } }, getElementById: id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, createElement: () => new Element(), addEventListener() {} };
+    const documentHandlers = {};
+    const document = { body: { classList: { toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name), contains: name => classes.has(name), add: name => classes.add(name), remove: name => classes.delete(name) } }, getElementById: id => { if (!elements.has(id)) elements.set(id, new Element()); return elements.get(id); }, createElement: () => new Element(), addEventListener: (name, callback) => { documentHandlers[name] = callback; } };
     document.getElementById('search').value = '';
     const requests = [];
     let onMessage;
@@ -176,5 +178,26 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     video.handlers.click(double); await video.handlers.dblclick(double);
     assert.equal(video.paused, false, 'a slower double click restores playback before expanding');
     assert.equal(classes.has('expanded'), true);
-
+    document.hidden = true;
+    documentHandlers.visibilitychange();
+    assert.equal(video.paused, false, 'hiding the video does not pause playback');
+    document.hidden = false;
+    video.handlers.pointerdown(pointer); fireHold();
+    assert.equal(video.playbackRate, 2);
+    document.hidden = true; documentHandlers.visibilitychange();
+    assert.equal(video.playbackRate, 1.5, 'hiding restores temporary speed without stopping playback');
+    assert.equal(video.paused, false);
+    registerVideoPlayer({ subscriptions: [] });
+    assert.equal(providerOptions.webviewOptions.retainContextWhenHidden, true, 'keeps the player alive behind other tabs');
+    document.hidden = false;
+    document.getElementById('list').children[0].handlers.click();
+    assert.equal(document.getElementById('next').disabled, false);
+    document.getElementById('next').handlers.click();
+    assert.equal(requests.at(-1).index, 1, 'next advances in playlist order');
+    await listeners[0](requests.at(-1));
+    assert.equal(video.paused, false, 'skipping starts the next video');
+    assert.equal(document.getElementById('next').disabled, true, 'there is no next item after the last video');
+    const requestCount = requests.length;
+    document.getElementById('next').handlers.click();
+    assert.equal(requests.length, requestCount, 'last item does not wrap or request an invalid video');
 });

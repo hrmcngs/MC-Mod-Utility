@@ -7,6 +7,7 @@ const { thumbnailData } = require('./thumbnail');
 
 const iconPaths = {
     play: '<path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/>',
+    next: '<path d="M6 5v14l10-7z" fill="currentColor" stroke="none"/><path d="M18 5v14"/>',
     pause: '<path d="M7 5h3v14H7zm7 0h3v14h-3z" fill="currentColor" stroke="none"/>',
     volume: '<path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
     muted: '<path d="M11 5 6 9H3v6h3l5 4z"/><path d="m16 9 5 6m0-6-5 6"/>',
@@ -102,10 +103,10 @@ async function renderPlayer(webview, uri, streamServer, cacheDirectory, disposab
 body.expanded{overflow:hidden}body.expanded header,body.expanded aside,body.expanded h1,body.expanded .path,body.expanded .hint{display:none}body.expanded main{display:block;max-width:none;padding:0}body.expanded video{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;aspect-ratio:auto;object-fit:contain;border-radius:0}body.expanded .toolbar{position:fixed;top:12px;right:12px;z-index:2;border:0;background:var(--vscode-editor-background);border-radius:8px;padding:8px;margin:0}body.expanded .toolbar>:not(#fullscreen):not(#windowFullscreen){display:none}body.expanded #status{position:fixed;top:70px;left:16px;right:16px;z-index:2}
 .playback{display:flex;align-items:center;gap:10px;padding:10px;background:var(--vscode-editor-background);border-radius:8px;flex-wrap:wrap}.playback input[type=range]{padding:0;border:0;border-radius:0;cursor:pointer;accent-color:#e53935}#seek{flex:1;min-width:90px;max-width:none}#volume{width:90px}#time{font-variant-numeric:tabular-nums;font-size:12px}body.expanded .playback{position:fixed;bottom:0;left:0;right:0;z-index:3;border-radius:0}body.expanded{background:#000}body.expanded video{height:100vh}body.expanded .toolbar{display:none}body.expanded .playback{color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.85));padding:35px 20px 15px;transition:opacity .2s}body.expanded .playback button{color:#fff;background:transparent}body.expanded.controls-hidden{cursor:none}body.expanded.controls-hidden .playback{opacity:0;pointer-events:none}body.expanded #expandControl{display:none}
 .stage{position:relative;width:100%;aspect-ratio:16/9;max-height:70vh;background:#000;border-radius:12px;overflow:hidden}.stage video{display:block;width:100%;height:100%;max-height:none;aspect-ratio:auto;object-fit:contain}.playback{position:absolute;bottom:0;left:0;right:0;z-index:5;display:flex;flex-wrap:wrap;gap:6px;padding:36px 16px 10px;background:linear-gradient(transparent,rgba(0,0,0,.8));color:#fff;border-radius:0;transition:opacity .18s}.playback button{background:transparent;color:#fff;border-radius:4px;min-width:38px;height:36px;padding:4px;font-size:23px}.playback button:hover{background:rgba(255,255,255,.18)}#seek{order:-1;flex:none;width:100%;height:16px;min-width:0;margin:0;accent-color:#f03;cursor:pointer}#volume{width:74px;accent-color:#fff;background:transparent}#time{font-size:13px;margin-left:8px;white-space:nowrap}#mute{order:1}#volume{order:2}#time{order:3}#expandControl{order:4;margin-left:auto}#fullControl{order:5}.controls-hidden .playback{opacity:0;pointer-events:none}.stage .playback:has(:focus-visible){opacity:1;pointer-events:auto}body.expanded .stage{position:fixed;inset:0;width:100vw;height:100vh;max-height:none;border-radius:0}body.expanded .stage video{position:absolute;inset:0;width:100%;height:100%}body.expanded #fullControl{margin-left:auto}body.expanded .playback{position:absolute;padding:36px 20px 14px}@media(max-width:500px){#volume{width:50px}.playback{padding-left:8px;padding-right:8px;gap:3px}#time{font-size:11px}}
-#play{min-width:48px;height:44px;touch-action:manipulation}.stage video{touch-action:manipulation;user-select:none}#hold-speed{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:7;padding:7px 14px;border-radius:20px;background:#000b;color:white;pointer-events:none}#hold-speed[hidden]{display:none}#stage-status{position:absolute;top:12px;left:12px;right:12px;z-index:6;margin:0;padding:10px 14px;border-radius:6px;color:#fff;background:#000b;pointer-events:none;font-size:14px}#stage-status[hidden]{display:none}.thumb{overflow:hidden;position:relative}.thumb img[hidden]{display:none}.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
+.playback button:disabled{opacity:.35;cursor:default}#next{min-width:44px;height:44px}#play{min-width:48px;height:44px;touch-action:manipulation}.stage video{touch-action:manipulation;user-select:none}#hold-speed{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:7;padding:7px 14px;border-radius:20px;background:#000b;color:white;pointer-events:none}#hold-speed[hidden]{display:none}#stage-status{position:absolute;top:12px;left:12px;right:12px;z-index:6;margin:0;padding:10px 14px;border-radius:6px;color:#fff;background:#000b;pointer-events:none;font-size:14px}#stage-status[hidden]{display:none}.thumb{overflow:hidden;position:relative}.thumb img[hidden]{display:none}.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
 </style></head><body>
 <header><div class="brand"><span class="logo">${icons.play}</span>WebM Player</div><input id="search" type="search" placeholder="動画を検索" aria-label="動画一覧を検索"></header>
-<main><section aria-label="動画プレーヤー"><div class="stage"><p id="stage-status" role="status">動画を読み込んでいます…</p><span id="hold-speed" hidden>2倍速 ▶▶</span><video id="video" playsinline preload="metadata"></video><div id="playback-controls" class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / --:--</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">画面をクリックで再生・一時停止、ダブルクリックで全画面。再生中に長押しすると、押している間だけ2倍速になります。</p></section>
+<main><section aria-label="動画プレーヤー"><div class="stage"><p id="stage-status" role="status">動画を読み込んでいます…</p><span id="hold-speed" hidden>2倍速 ▶▶</span><video id="video" playsinline preload="metadata"></video><div id="playback-controls" class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><button id="next" title="次の動画" aria-label="次の動画">${icons.next}</button><span id="time">0:00 / --:--</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">画面をクリックで再生・一時停止、ダブルクリックで全画面。再生中に長押しすると、押している間だけ2倍速になります。</p></section>
 <aside><h2>ワークスペースの動画 <span id="count"></span></h2><div id="list"></div><p id="empty" hidden>一致する動画がありません。</p><p class="hint">WebMを最大200件表示。追加した動画はエディターを開き直すと反映されます。</p></aside></main>
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
@@ -171,6 +172,9 @@ async function togglePlayback() {
  await startPlayback();
 }
 document.getElementById('play').addEventListener('click', () => { cancelScreenClick(); return togglePlayback(); });
+document.getElementById('next').addEventListener('click', () => {
+ if (selected + 1 < entries.length) select(selected + 1, false, true);
+});
 let screenClickTimer;
 let screenClickState = null;
 function cancelScreenClick() {
@@ -271,6 +275,7 @@ function select(index, compatible = false, resume = false, position = 0) {
  document.getElementById('stage-status').textContent = compatible ? '互換再生の準備中… 最初の部分ができ次第、再生できます。' : '動画を読み込んでいます…';
  document.getElementById('seek').disabled = !(knownDuration > 0);
  selected = index;
+ document.getElementById('next').disabled = selected >= entries.length - 1;
  requestId++;
  preparing = !entries[index].issue && compatible && entries[index].canPrepare;
  if (preparing) entries[index].compatibilityAttempted = true;
@@ -297,6 +302,7 @@ function select(index, compatible = false, resume = false, position = 0) {
  if (entries[index].issue) document.getElementById('status').textContent = entries[index].issue;
  draw();
  requestThumbnail(index);
+ if (resume && !preparing && !entries[index].issue) void startPlayback();
 }
 function draw() {
  const query = document.getElementById('search').value.toLowerCase();
@@ -479,7 +485,7 @@ window.addEventListener('message', async event => {
   document.getElementById('status').textContent = event.data.message;
  }
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelScreenClick(); playRequested = false; playbackAction++; video.pause(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelScreenClick(); cancelVideoPress(); } });
 select(${initialIndex});
 </script></body></html>`;
 }
@@ -517,9 +523,6 @@ function registerVideoPlayer(context) {
                     console.error('Video server unavailable; using webview resources:', error);
                 }
                 if (streamServer) panel.onDidDispose(() => streamServer.dispose());
-                panel.onDidChangeViewState(() => {
-                    if (!panel.visible) void panel.webview.postMessage({ type: 'pause' });
-                });
                 const disposables = [];
                 panel.onDidDispose(() => disposables.forEach(item => item.dispose()));
                 try {
@@ -529,7 +532,7 @@ function registerVideoPlayer(context) {
                     panel.webview.html = '<!doctype html><html lang="ja"><meta charset="utf-8"><h1>動画を開けませんでした</h1><p role="alert">' + escapeHtml(error.message) + '</p><p>動画のタブを閉じて開き直してください。</p></html>';
                 }
             },
-        }, { webviewOptions: { retainContextWhenHidden: false } })
+        }, { webviewOptions: { retainContextWhenHidden: true } })
     );
 }
 
