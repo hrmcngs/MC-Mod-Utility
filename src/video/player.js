@@ -105,7 +105,7 @@ body.expanded{overflow:hidden}body.expanded header,body.expanded aside,body.expa
 #play{min-width:48px;height:44px;touch-action:manipulation}.stage video{touch-action:manipulation;user-select:none}#hold-speed{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:7;padding:7px 14px;border-radius:20px;background:#000b;color:white;pointer-events:none}#hold-speed[hidden]{display:none}#stage-status{position:absolute;top:12px;left:12px;right:12px;z-index:6;margin:0;padding:10px 14px;border-radius:6px;color:#fff;background:#000b;pointer-events:none;font-size:14px}#stage-status[hidden]{display:none}.thumb{overflow:hidden;position:relative}.thumb img[hidden]{display:none}.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.icon{display:inline-block;vertical-align:middle;flex-shrink:0}.playback button{display:inline-flex;align-items:center;justify-content:center}.logo{display:inline-flex;align-items:center;justify-content:center}#open .icon{width:18px;height:18px}
 </style></head><body>
 <header><div class="brand"><span class="logo">${icons.play}</span>WebM Player</div><input id="search" type="search" placeholder="動画を検索" aria-label="動画一覧を検索"></header>
-<main><section aria-label="動画プレーヤー"><div class="stage"><p id="stage-status" role="status">動画を読み込んでいます…</p><span id="hold-speed" hidden>2倍速 ▶▶</span><video id="video" playsinline preload="metadata"></video><div id="playback-controls" class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / --:--</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">画面をクリックで再生・一時停止。再生中に長押しすると、押している間だけ2倍速になります。</p></section>
+<main><section aria-label="動画プレーヤー"><div class="stage"><p id="stage-status" role="status">動画を読み込んでいます…</p><span id="hold-speed" hidden>2倍速 ▶▶</span><video id="video" playsinline preload="metadata"></video><div id="playback-controls" class="playback" aria-label="再生操作"><button id="play" aria-label="再生">${icons.play}</button><span id="time">0:00 / --:--</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><button id="mute" title="ミュート" aria-label="ミュート" aria-pressed="false">${icons.volume}</button><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量"><button id="expandControl" title="シアターモード" aria-label="シアターモード">${icons.theater}</button><button id="fullControl" title="全画面" aria-label="全画面">${icons.fullscreen}</button></div></div><h1 id="title"></h1><div id="path" class="path"></div><div class="toolbar"><button id="open">${icons.plus} 動画を開く</button><button id="retry">再読み込み</button><button id="compatible">互換再生</button><label>再生速度 <select id="speed" aria-label="再生速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>標準</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><button id="loop" aria-pressed="false">ループ</button><button id="fullscreen" aria-pressed="false">動画を拡大</button><button id="windowFullscreen">全画面</button></div><div id="status" role="status">動画プレーヤーを起動しています…</div><p class="hint">画面をクリックで再生・一時停止、ダブルクリックで全画面。再生中に長押しすると、押している間だけ2倍速になります。</p></section>
 <aside><h2>ワークスペースの動画 <span id="count"></span></h2><div id="list"></div><p id="empty" hidden>一致する動画がありません。</p><p class="hint">WebMを最大200件表示。追加した動画はエディターを開き直すと反映されます。</p></aside></main>
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
@@ -170,7 +170,12 @@ async function togglePlayback() {
  }
  await startPlayback();
 }
-document.getElementById('play').addEventListener('click', togglePlayback);
+document.getElementById('play').addEventListener('click', () => { cancelScreenClick(); return togglePlayback(); });
+let screenClickTimer;
+let screenClickState = null;
+function cancelScreenClick() {
+ clearTimeout(screenClickTimer); screenClickTimer = undefined; screenClickState = null;
+}
 let videoPress = null;
 let suppressVideoClick = false;
 function cancelVideoPress() {
@@ -182,11 +187,13 @@ function cancelVideoPress() {
 }
 video.addEventListener('pointerdown', event => {
  if (event.button !== 0 || event.isPrimary === false) return;
+ clearTimeout(screenClickTimer);
  cancelVideoPress(); suppressVideoClick = false;
  videoPress = { id: event.pointerId, x: event.clientX, y: event.clientY, held: false, rate: video.playbackRate };
  const press = videoPress;
  press.timer = setTimeout(() => {
   if (videoPress !== press || video.paused || preparing) return;
+  cancelScreenClick();
   press.held = true; press.rate = video.playbackRate;
   video.playbackRate = 2;
   document.getElementById('hold-speed').hidden = false;
@@ -206,11 +213,19 @@ video.addEventListener('pointerup', event => {
  cancelVideoPress(); showControls();
 });
 for (const event of ['pointercancel', 'lostpointercapture']) video.addEventListener(event, cancelVideoPress);
-window.addEventListener('blur', cancelVideoPress);
+window.addEventListener('blur', () => { cancelScreenClick(); cancelVideoPress(); });
 video.addEventListener('contextmenu', event => { if (videoPress?.held) event.preventDefault(); });
 video.addEventListener('click', event => {
- if (suppressVideoClick) { suppressVideoClick = false; event.preventDefault(); return; }
- void togglePlayback();
+ if (suppressVideoClick) { suppressVideoClick = false; cancelScreenClick(); event.preventDefault(); return; }
+ if (event.detail === 0) { cancelScreenClick(); void togglePlayback(); return; }
+ clearTimeout(screenClickTimer);
+ if (event.detail > 1) return;
+ const state = { request: requestId, active: playRequested || !video.paused, applied: false };
+ screenClickState = state;
+ screenClickTimer = setTimeout(() => {
+  if (state.request !== requestId || screenClickState !== state) return;
+  state.applied = true; void togglePlayback();
+ }, 250);
 });
 video.addEventListener('pause', cancelVideoPress);
 video.addEventListener('ended', () => { playRequested = false; cancelVideoPress(); updatePlayback(); showControls(); });
@@ -248,7 +263,7 @@ let knownDuration = 0;
 let playbackOffset = 0;
 let scrubbing = false;
 function select(index, compatible = false, resume = false, position = 0) {
- cancelVideoPress(); playbackAction++;
+ cancelScreenClick(); cancelVideoPress(); playbackAction++;
  compatible = compatible || !!entries[index].converting || !!entries[index].offset || !!entries[index].prepared;
  playRequested = resume;
  converting = false; knownDuration = entries[index].duration || 0; playbackOffset = position; scrubbing = false;
@@ -355,7 +370,14 @@ document.addEventListener('fullscreenchange', () => { if (immersive && !document
 document.addEventListener('mousemove', showControls);
 document.addEventListener('pointerdown', showControls);
 document.addEventListener('keydown', showControls);
-video.addEventListener('dblclick', toggleFullscreen);
+video.addEventListener('dblclick', async event => {
+ event.preventDefault();
+ const state = screenClickState;
+ cancelScreenClick();
+ // A slower OS-recognized double click may arrive after the single-click timer.
+ if (state?.applied && state.request === requestId && state.active !== (playRequested || !video.paused)) await togglePlayback();
+ await toggleFullscreen();
+});
 video.addEventListener('play', showControls);
 video.addEventListener('pause', showControls);
 function expandVideo(expanded) {
@@ -417,7 +439,7 @@ window.addEventListener('message', async event => {
   }
   return;
  }
- if (event.data?.type === 'pause') { playRequested = false; playbackAction++; video.pause(); }
+ if (event.data?.type === 'pause') { cancelScreenClick(); playRequested = false; playbackAction++; video.pause(); }
  if (event.data?.requestId !== requestId) return;
  if (event.data.type === 'sourceReady') {
   preparing = false;
@@ -457,7 +479,7 @@ window.addEventListener('message', async event => {
   document.getElementById('status').textContent = event.data.message;
  }
 });
-document.addEventListener('visibilitychange', () => { if (document.hidden) { playRequested = false; playbackAction++; video.pause(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { cancelScreenClick(); playRequested = false; playbackAction++; video.pause(); } });
 select(${initialIndex});
 </script></body></html>`;
 }

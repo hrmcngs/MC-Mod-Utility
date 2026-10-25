@@ -124,7 +124,7 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     await document.getElementById('fullControl').handlers.click();
     assert.equal(requests.at(-1).enabled, false);
     assert.equal(classes.has('expanded'), false);
-    const click = { preventDefault() {} };
+    const click = { detail: 0, preventDefault() {} };
     await video.handlers.click(click);
     assert.equal(video.paused, false, 'clicking the video starts playback');
     await video.handlers.click(click);
@@ -161,4 +161,20 @@ test('loads original WebM immediately, offers compatibility playback and ignores
     assert.equal(video.paused, false, 'rapid play-pause-play keeps the latest playback request');
     assert.equal(document.getElementById('play').attributes['aria-label'], '一時停止');
     assert.doesNotMatch(document.getElementById('status').textContent, /old aborted play/);
+    const single = { detail: 1, preventDefault() {} }, double = { detail: 2, preventDefault() {} };
+    const fireClick = async () => { const [id, timer] = [...timers].find(([,timer]) => timer.delay === 250); timers.delete(id); await timer.callback(); };
+    video.handlers.click(single);
+    assert.equal(video.paused, false, 'waits briefly to distinguish a double click');
+    video.handlers.click(double);
+    await video.handlers.dblclick(double);
+    assert.equal(video.paused, false, 'double click expands without pausing');
+    assert.equal(classes.has('expanded'), true);
+    await video.handlers.dblclick(double);
+    assert.equal(classes.has('expanded'), false);
+    video.handlers.click(single); await fireClick();
+    assert.equal(video.paused, true, 'single click still pauses');
+    video.handlers.click(double); await video.handlers.dblclick(double);
+    assert.equal(video.paused, false, 'a slower double click restores playback before expanding');
+    assert.equal(classes.has('expanded'), true);
+
 });
