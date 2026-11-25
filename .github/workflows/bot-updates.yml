@@ -22,7 +22,7 @@ jobs:
           node --input-type=module <<'JS'
           import {readFile} from 'node:fs/promises';
           import {GitHub} from './.github/ai-bot/src/github.js';
-          import {checkUpdate,installation,STATE,updates} from './.github/ai-bot/src/updates.js';
+          import {checkUpdate,installation,STATE,updates,Upstream} from './.github/ai-bot/src/updates.js';
           const original=globalThis.fetch;
           globalThis.fetch=async(url,options)=>{
             if(options?.method&&options.method!=='GET')throw new Error('Read-only diagnostic');
@@ -32,6 +32,8 @@ jobs:
             return res;
           };
           try{
+            try{await new GitHub(process.env.GITHUB_REPOSITORY,process.env.GH_TOKEN,original).request('/repos/'+process.env.GITHUB_REPOSITORY);console.log('native fetch receiver: OK');}catch(e){console.log('native fetch receiver: '+String(e.code||e.name));}
+            try{await new Upstream(original).request('/commits/main');console.log('native upstream receiver: OK');}catch(e){console.log('native upstream receiver: '+String(e.code||e.name));}
             const gh=new GitHub(process.env.GITHUB_REPOSITORY,process.env.GH_TOKEN);
             const repo=await gh.request(gh.path());const event=JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH,'utf8'));console.log(JSON.stringify({event:process.env.GITHUB_EVENT_NAME,eventRepo:event.repository?.full_name,repository:process.env.GITHUB_REPOSITORY,ref:process.env.GITHUB_REF,defaultBranch:repo.default_branch}));console.log('destination: OK');
             const state=installation(JSON.parse(await readFile(STATE,'utf8')));console.log('installation: OK');
