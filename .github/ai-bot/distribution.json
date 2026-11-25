@@ -7,6 +7,7 @@
     ".github/ai-bot/package.json",
     ".github/ai-bot/config.json",
     ".github/ai-bot/distribution.json",
+    ".github/ai-bot/src/configure.js",
     ".github/ai-bot/src/bulk.js",
     ".github/ai-bot/src/updates.js",
     ".github/ai-bot/src/core.js",
@@ -30,6 +31,10 @@
     ".github/workflows/investigate-one.yml",
     ".github/workflows/bot-updates.yml",
     ".github/workflows/proposal-updates.yml",
-    ".github/workflows/auto-merge.yml"
+    ".github/workflows/auto-merge.yml",
+    ".github/ai-bot/src/conflicts.js",
+    ".github/ai-bot/src/ai-selection.js",
+    ".github/ai-bot/src/review.js",
+    ".github/workflows/review.yml"
   ]
 }

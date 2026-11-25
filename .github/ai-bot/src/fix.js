@@ -1,3 +1,5 @@
+import {chooseAI,runAI,selectionMarker} from './ai-selection.js';
+import {prepareRepair,publishRepair} from './conflicts.js';
 import {workerEvent} from './bulk.js';
 import { readFile, writeFile, mkdir, appendFile, stat, chmod, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -13,7 +15,7 @@ import { isCommand, requireCommand, referenceChoice } from './commands.js';
 import { markdown } from './markdown.js';
 import { proposalLink, createLinkedProposal } from './proposals.js';
 import {currentProposal,previousProposals,previousLinks,revisionMarker,referenceMarker} from './proposal-state.js';
-import { editable, fixConfig, fixPrompt, parsePlan, planHash, fixId, literal, validationResult, validationFailure } from './fix-core.js';
+import { changeable, editable, fixConfig, fixPrompt, parsePlan, planHash, fixId, literal, validationResult, validationFailure } from './fix-core.js';
 const exec = promisify(execFile);
 const marker = n => `<!-- ai-fix:issue:${number(n)} -->`;
 const instructions = '修正PRを作成できませんでした。Issueの具体性、許可パス、検証設定を確認してください。';
@@ -46,10 +48,12 @@ async function post(gh,n,body,commandId) {
 }
 export async function prepareFix(env=process.env,ghArg) {
   const gh=ghArg || new GitHub(env.GITHUB_REPOSITORY,env.GH_TOKEN);
-  const cfg=config(await json('.github/ai-bot/config.json'));
-  const settings=fixConfig(cfg);
-  if(!settings.enabled)return;
+  let cfg=config(await json('.github/ai-bot/config.json'));
   const event=workerEvent(env,await json(env.GITHUB_EVENT_PATH,2000000));
+  cfg=chooseAI(cfg,event,env);
+  if(env.GITHUB_EVENT_NAME==='issue_comment'&&event.issue?.pull_request)return prepareRepair(gh,event,env,cfg);
+  if(!cfg.fix?.enabled)return;
+  const settings=fixConfig(cfg);
   cfg.referencePreviousPRs=referenceChoice(event,env,cfg);
   if(!['issues','workflow_dispatch','issue_comment'].includes(env.GITHUB_EVENT_NAME))throw new SafeError('ACCESS');
   if(env.GITHUB_EVENT_NAME==='issues' && (event.action!=='labeled' || event.label?.name!==settings.label))return;
@@ -65,7 +69,7 @@ export async function prepareFix(env=process.env,ghArg) {
   const issue=await gh.request(gh.path(`/issues/${n}`));
   const target=issueTarget(issue);
   if(env.GITHUB_EVENT_NAME==='issues' && !issue.labels.some(l=>l.name===settings.label))return;
-  const existing=await currentProposal(gh,'fix',target,cfg.referencePreviousPRs);
+  const existing=await currentProposal(gh,'fix',target,cfg.referencePreviousPRs,cfg);
   if(existing){
     const body=`${proposalLink(gh,existing.number)} が既にあります。追加のAI呼び出しやPR作成は行いません。`;
     await post(gh,n,body,env.GITHUB_EVENT_NAME==='issue_comment'?event.comment.id:undefined);
@@ -79,18 +83,18 @@ export async function prepareFix(env=process.env,ghArg) {
   context.previousProposals=await previousProposals(gh,'fix',target,cfg);
   const bundle={version:1,repo:gh.repo,branch:repo.default_branch,cfg,targets:[{...target,sha,fingerprint:fingerprint(target,sha,cfg)}],context};
   await save('.work/fix-bundle.json',bundle);
-  if(env.GITHUB_OUTPUT)await appendFile(env.GITHUB_OUTPUT,`ready=true\nprovider=${cfg.provider}\nsha=${sha}\n`);
+  if(env.GITHUB_OUTPUT)await appendFile(env.GITHUB_OUTPUT,`ready=true\nprovider=${cfg.aiMode==='all'?'all':cfg.provider}\nsha=${sha}\n`);
 }
 export async function generateFix(env=process.env,providers={tokyo,agent}) {
   const bundle=await json('.work/fix-bundle.json');bundleValid(bundle,env);
   try {
-    if(!bundle.context.files.some(f=>editable(f.path,bundle.cfg))) {
+    if(!bundle.context.files.some(f=>changeable(f.path,bundle))) {
       await save('.work/fix-plan.json',{ok:true,plan:{confidence:'low',summary:'取得資料に変更可能な既存JavaScriptファイルがありません。includeの設定とIssueに関連するファイルを確認してください。',changes:[]}});return;
     }
     const input=fixPrompt(bundle);
     if(Buffer.byteLength(input)>190000)throw new SafeError('CONFIG');
     const cfg=bundle.cfg;
-    const text=cfg.provider==='tokyo'?await providers.tokyo(input,env.AI_API_KEY,undefined,60000):await providers.agent(cfg.provider,cfg.models[cfg.provider],input,env.AI_API_KEY,undefined,60000);
+    const text=await runAI(cfg,input,env,providers,60000);
     const plan=parsePlan(text,bundle);
     await save('.work/fix-plan.json',{ok:true,plan});
     if(plan.changes.length && env.GITHUB_OUTPUT)await appendFile(env.GITHUB_OUTPUT,'has-changes=true\n');
@@ -139,6 +143,7 @@ export async function publishFix(env=process.env,ghArg) {
   const result=await json('.work/fix-plan.json',100000),verdict=await json('.work/fix-verdict.json',100000);
   const event=workerEvent(env,await json(env.GITHUB_EVENT_PATH,2000000));
   const target=bundle.targets[0],n=number(target.number);
+  if(bundle.repair)return publishRepair(gh,event,env,bundle,result,verdict);
   const settings=fixConfig(bundle.cfg);
   if(!settings.enabled)throw new SafeError('ACCESS');
   if(event.repository?.full_name!==gh.repo)throw new SafeError('ACCESS');
@@ -176,7 +181,7 @@ export async function publishFix(env=process.env,ghArg) {
   if(ref.object?.sha!==target.sha || fingerprint(issueTarget(issue),target.sha,bundle.cfg)!==target.fingerprint || (env.GITHUB_EVENT_NAME==='issues' && !issue.labels.some(l=>l.name===settings.label))) {
     await failure(reasons.STALE);throw new SafeError('STALE');
   }
-  const existing=await currentProposal(gh,'fix',target,bundle.cfg.referencePreviousPRs);
+  const existing=await currentProposal(gh,'fix',target,bundle.cfg.referencePreviousPRs,bundle.cfg);
   if(existing){await post(gh,n,`${proposalLink(gh,existing.number)} が既にあります。${footer}`,commandId);return;}
   // Re-read original blobs before any writes. Every proposed path must remain a regular tracked file.
   const tree=await gh.request(gh.path(`/git/trees/${target.sha}?recursive=1`));
@@ -187,7 +192,7 @@ export async function publishFix(env=process.env,ghArg) {
     const blob=await gh.request(gh.path(`/git/blobs/${entry.sha}`));
     if(blob.encoding!=='base64' || Buffer.from(blob.content,'base64').toString('utf8')!==bundle.context.files.find(f=>f.path===change.path)?.content)throw new SafeError('OUTPUT');
   }
-  const prBody=`${marker(n)}\n${revisionMarker(target)}\n${referenceMarker(bundle.cfg.referencePreviousPRs??true)}\nCloses #${n}\n\n${aiIdentity(bundle.cfg)}\n\nAIによる修正提案です。人間のレビューが必要です。\n\n旧PRの参照: ${(bundle.cfg.referencePreviousPRs??true)?'あり':'なし'}\n\n${markdown(plan.summary)}\n\n検証対象SHA: \`${target.sha}\`\n変更したJavaScriptの構文チェック: 成功\nオフライン・Secretなし環境での検証: 成功\n\n${literal(settings.commands.map(args=>args.join(' ')).join('\n'))}\n\nネットワークを必要とする検証は行っていません。検証成功は修正の正しさを保証しません。${previousLinks(gh,bundle.context.previousProposals)}${footer}`;
+  const prBody=`${marker(n)}\n${revisionMarker(target)}\n${referenceMarker(bundle.cfg.referencePreviousPRs??true)}\n${selectionMarker(bundle.cfg)}\nCloses #${n}\n\n${aiIdentity(bundle.cfg)}\n\nAIによる修正提案です。人間のレビューが必要です。\n\n旧PRの参照: ${(bundle.cfg.referencePreviousPRs??true)?'あり':'なし'}\n\n${markdown(plan.summary)}\n\n検証対象SHA: \`${target.sha}\`\n変更したJavaScriptの構文チェック: 成功\nオフライン・Secretなし環境での検証: 成功\n\n${literal(settings.commands.map(args=>args.join(' ')).join('\n'))}\n\nネットワークを必要とする検証は行っていません。検証成功は修正の正しさを保証しません。${previousLinks(gh,bundle.context.previousProposals)}${footer}`;
   try{
     await createLinkedProposal(gh,{kind:'fix',issue:n,runId:env.GITHUB_RUN_ID,sha:target.sha,id:fixId(bundle),base:bundle.branch,title:`fix: address issue #${n}`,body:prBody,files:plan.changes,notify:async(pr)=>{
       const body=`修正案を ${proposalLink(gh,pr.number)} に作成しました。\n\n${aiIdentity(bundle.cfg)}\n\n${markdown(plan.summary)}\n\n構文チェックと設定された検証は成功しました。変更内容とテストの妥当性をレビューしてください。${footer}`;

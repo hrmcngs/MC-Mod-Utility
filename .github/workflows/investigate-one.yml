@@ -2,6 +2,9 @@ name: AI investigate worker
 on:
   workflow_call:
     inputs:
+      ai:
+        type: string
+        default: default
       number:
         type: string
         required: true
@@ -24,6 +27,7 @@ on:
 permissions: {}
 env:
   AI_BOT_WORKER: 'true'
+  AI_BOT_AI: ${{ inputs.ai }}
   AI_BOT_NUMBER: ${{ inputs.number }}
   AI_BOT_TARGET: ${{ inputs.target }}
   AI_BOT_RESULT: ${{ inputs.result }}
@@ -60,6 +64,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ALLOW_PRIVATE_REPOSITORY: ${{ vars.AI_BOT_ALLOW_PRIVATE }}
+          AI_BOT_HAS_TOKYO: ${{ secrets.TOKYO_AI_API_KEY != '' }}
+          AI_BOT_HAS_CLAUDE: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          AI_BOT_HAS_CODEX: ${{ secrets.OPENAI_API_KEY != '' }}
       - if: steps.prepare.outputs.ready == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -73,7 +80,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.ready == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       contents: read
     steps:
@@ -89,10 +96,10 @@ jobs:
           name: investigation-bundle-${{ inputs.target }}-${{ inputs.number }}
           path: .work
       - name: Build isolated Claude runner without credentials
-        if: needs.prepare.outputs.provider == 'claude' && needs.prepare.outputs.reuse-report != 'true'
+        if: (needs.prepare.outputs.provider == 'claude' || needs.prepare.outputs.provider == 'all') && needs.prepare.outputs.reuse-report != 'true'
         run: docker build --build-arg PROVIDER=claude -f .github/ai-bot/Dockerfile -t ai-bot-claude:local .github/ai-bot
       - name: Build isolated Codex runner without credentials
-        if: needs.prepare.outputs.provider == 'codex' && needs.prepare.outputs.reuse-report != 'true'
+        if: (needs.prepare.outputs.provider == 'codex' || needs.prepare.outputs.provider == 'all') && needs.prepare.outputs.reuse-report != 'true'
         run: docker build --build-arg PROVIDER=codex -f .github/ai-bot/Dockerfile -t ai-bot-codex:local .github/ai-bot
       - name: Build credential broker without credentials
         if: needs.prepare.outputs.provider != 'tokyo' && needs.prepare.outputs.reuse-report != 'true'
@@ -101,6 +108,9 @@ jobs:
         run: node .github/ai-bot/src/main.js analyze
         env:
           AI_API_KEY: ${{ needs.prepare.outputs.reuse-report != 'true' && (needs.prepare.outputs.provider == 'tokyo' && secrets.TOKYO_AI_API_KEY || needs.prepare.outputs.provider == 'claude' && secrets.ANTHROPIC_API_KEY || needs.prepare.outputs.provider == 'codex' && secrets.OPENAI_API_KEY) || '' }}
+          TOKYO_AI_API_KEY: ${{ needs.prepare.outputs.provider == 'all' && needs.prepare.outputs.reuse-report != 'true' && secrets.TOKYO_AI_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ needs.prepare.outputs.provider == 'all' && needs.prepare.outputs.reuse-report != 'true' && secrets.ANTHROPIC_API_KEY || '' }}
+          OPENAI_API_KEY: ${{ needs.prepare.outputs.provider == 'all' && needs.prepare.outputs.reuse-report != 'true' && secrets.OPENAI_API_KEY || '' }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: investigation-result-${{ inputs.target }}-${{ inputs.number }}
