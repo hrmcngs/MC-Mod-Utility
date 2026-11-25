@@ -9,6 +9,7 @@ export const SOURCE='hrmcngs/github-ai-fix-bot';
 export const STATE='.github/ai-bot/installation.json';
 export const MANIFEST='.github/ai-bot/distribution.json';
 export const UPDATE_MARKER='<!-- ai-bot-update:v1 -->';
+// Update checks inspect upstream files as data; downloaded code is never executed.
 const sha=value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value);
 export function managedPath(path){
   return typeof path==='string'&&(/^\.github\/ai-bot\/(?:src\/[a-z][a-z-]*\.js|Dockerfile(?:\.verify)?|package\.json|config\.json|distribution\.json|\.dockerignore)$/.test(path)
