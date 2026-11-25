@@ -8,13 +8,13 @@ import {isCommand,requireCommand} from './commands.js';
 export function workerEvent(env,event){
   if(env.GITHUB_EVENT_NAME!=='workflow_dispatch'||env.AI_BOT_WORKER!=='true')return event;
   return {...event,inputs:{...event.inputs,number:env.AI_BOT_NUMBER,target:env.AI_BOT_TARGET,
-    result:env.AI_BOT_RESULT||'comment',reference_previous:env.AI_BOT_REFERENCE||'default'}};
+    result:env.AI_BOT_RESULT||'comment',reference_previous:env.AI_BOT_REFERENCE||'default',ai:env.AI_BOT_AI||'default'}};
 }
 export async function selectTargets(gh,event,env,cfg,mode){
   if(!['fix','investigate'].includes(mode))throw new SafeError('CONFIG');
   if(event.repository?.full_name!==gh.repo)throw new SafeError('ACCESS');
   const trigger=env.GITHUB_EVENT_NAME;
-  if(trigger==='issue_comment'&&!isCommand(event,env,mode==='fix'?'/ai-fix':'/ai-investigate')
+  if(trigger==='issue_comment'&&!isCommand(event,env,mode==='fix'?'/ai-fix':'/ai-investigate',mode==='fix')
     &&!(mode==='investigate'&&isCommand(event,env,'/ai-report-pr')))return [];
   const repo=await gh.request(gh.path());
   if(env.GITHUB_REF!==`refs/heads/${repo.default_branch}`)throw new SafeError('ACCESS');
@@ -26,7 +26,7 @@ export async function selectTargets(gh,event,env,cfg,mode){
   }
   if(trigger==='issue_comment'){
     const command=mode==='fix'?'/ai-fix':isCommand(event,env,'/ai-report-pr')?'/ai-report-pr':'/ai-investigate';
-    return [{kind:'issue',number:String(await requireCommand(gh,event,env,command))}];
+    return [{kind:event.issue?.pull_request?'pull':'issue',number:String(await requireCommand(gh,event,env,command,mode==='fix'))}];
   }
   if(trigger==='issues'){
     const label=mode==='fix'?cfg.fix?.label:cfg.issueLabel;

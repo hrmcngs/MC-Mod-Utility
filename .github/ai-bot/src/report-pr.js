@@ -1,3 +1,4 @@
+import {selectionMarker} from './ai-selection.js';
 import {appendFile} from 'node:fs/promises';
 import {number,config,cleanOutput,fingerprint,aiIdentity,SafeError,messages} from './core.js';
 import {botOwned,comments} from './github.js';
@@ -6,7 +7,7 @@ import {markdown} from './markdown.js';
 import {createLinkedProposal,proposalLink} from './proposals.js';
 import {currentProposal,previousLinks,revisionMarker,referenceMarker} from './proposal-state.js';
 const marker=n=>`<!-- ai-report:issue:${number(n)} -->`;
-export const openReport=(gh,issue,reference)=>currentProposal(gh,'report',issue,reference);
+export const openReport=(gh,issue,reference,cfg)=>currentProposal(gh,'report',issue,reference,cfg);
 export function reportFile(bundle,text){
   const target=bundle.targets[0],n=number(target.number);
   return {path:`reports/ai/issue-${n}.md`,content:`${marker(n)}\n# Issue #${n} のAI調査結果\n\n対象: https://github.com/${bundle.repo}/issues/${n}\n\n${aiIdentity(bundle.cfg)} / 対象SHA: \`${target.sha}\`\n\nAIによる静的調査です。コード修正・テストは行っていません。人間による確認が必要です。\n\n${markdown(cleanOutput(text))}\n`};
@@ -52,7 +53,7 @@ export async function publishReport({env,gh,bundle,result,event,issueTarget}){
   };
   const current=issueTarget(await gh.request(gh.path(`/issues/${n}`)));
   if(fingerprint(current,target.sha,bundle.cfg)!==target.fingerprint){await notify(messages.STALE);throw new SafeError('STALE');}
-  const existing=await openReport(gh,target,bundle.cfg.referencePreviousPRs);
+  const existing=await openReport(gh,target,bundle.cfg.referencePreviousPRs,bundle.cfg);
   if(existing){await notify(`調査結果の ${proposalLink(gh,existing.number)} が既にあります。重複作成はしていません。`);return;}
   const analysis=result.results[0];
   if(!analysis.ok){await notify(`調査結果のPRは作成していません。\n\n${markdown(cleanOutput(analysis.text))}`);throw new SafeError('OUTPUT');}
@@ -63,7 +64,7 @@ export async function publishReport({env,gh,bundle,result,event,issueTarget}){
   const file=reportFile(bundle,analysis.text);
   try{await reportDestination(gh,target.sha,n);}catch(error){await notify('調査結果の保存先が既存ファイルまたはシンボリックリンクと競合しています。PRは作成していません。');throw error;}
   try{
-    await createLinkedProposal(gh,{kind:'report',issue:n,runId:env.GITHUB_RUN_ID,sha:target.sha,id:target.fingerprint,base:repo.default_branch,title:`docs: investigation report for issue #${n}`,body:`${marker(n)}\n${revisionMarker(target)}\n${referenceMarker(bundle.cfg.referencePreviousPRs??true)}\nRefs #${n}\n\n${aiIdentity(bundle.cfg)}\n\n調査結果を \`${file.path}\` にまとめました。コード修正のPRではありません。\n\n旧PRの参照: ${(bundle.cfg.referencePreviousPRs??true)?'あり':'なし'}\n\n確認: Markdownの整形・容量・保存先・元SHA・Issue内容を検査済み。コードのテストは行っていません。人間による根拠の照合とレビューが必要です。${previousLinks(gh,bundle.context.previousProposals)}${footer}`,files:[file],notify:async pr=>notify(`調査結果を ${proposalLink(gh,pr.number)} にまとめました。\n\n${aiIdentity(bundle.cfg)}\n\n保存先: \`${file.path}\`\n\nコードの修正はしていません。Markdownの差分と調査内容をレビューしてください。`)});
+    await createLinkedProposal(gh,{kind:'report',issue:n,runId:env.GITHUB_RUN_ID,sha:target.sha,id:target.fingerprint,base:repo.default_branch,title:`docs: investigation report for issue #${n}`,body:`${marker(n)}\n${revisionMarker(target)}\n${referenceMarker(bundle.cfg.referencePreviousPRs??true)}\n${selectionMarker(bundle.cfg)}\nRefs #${n}\n\n${aiIdentity(bundle.cfg)}\n\n調査結果を \`${file.path}\` にまとめました。コード修正のPRではありません。\n\n旧PRの参照: ${(bundle.cfg.referencePreviousPRs??true)?'あり':'なし'}\n\n確認: Markdownの整形・容量・保存先・元SHA・Issue内容を検査済み。コードのテストは行っていません。人間による根拠の照合とレビューが必要です。${previousLinks(gh,bundle.context.previousProposals)}${footer}`,files:[file],notify:async pr=>notify(`調査結果を ${proposalLink(gh,pr.number)} にまとめました。\n\n${aiIdentity(bundle.cfg)}\n\n保存先: \`${file.path}\`\n\nコードの修正はしていません。Markdownの差分と調査内容をレビューしてください。`)});
   }catch(error){
     if(error.code==='NOTIFY'){
       if(env.GITHUB_STEP_SUMMARY)await appendFile(env.GITHUB_STEP_SUMMARY,`${proposalLink(gh,error.proposalNumber)} は作成済みです。${messages.NOTIFY}\n`);

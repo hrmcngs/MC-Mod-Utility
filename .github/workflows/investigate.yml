@@ -4,6 +4,11 @@ on:
     types: [created]
   workflow_dispatch:
     inputs:
+      ai:
+        description: AIを選択（allは登録済みAIの案を統合・利用回数が増えます）
+        type: choice
+        options: [default, tokyo, claude, codex, all]
+        default: default
       reference_previous:
         description: 旧PRの差分を参照するか（defaultは設定に従う）
         type: choice
@@ -76,6 +81,7 @@ jobs:
       vulnerability-alerts: read
     uses: ./.github/workflows/investigate-one.yml
     with:
+      ai: ${{ inputs.ai || 'default' }}
       number: ${{ matrix.number }}
       target: ${{ matrix.kind }}
       result: ${{ inputs.result || 'comment' }}

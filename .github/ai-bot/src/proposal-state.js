@@ -1,3 +1,4 @@
+import {sameAI} from './ai-selection.js';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
@@ -17,8 +18,8 @@ export function ownedProposal(pr,gh,kind,n){
 }
 export const referenceMarker=enabled=>`<!-- ai-reference-previous:${enabled?'on':'off'} -->`;
 export function sameReference(pr,enabled){return pr.body?.split('\n')[2]===referenceMarker(enabled) || (enabled&&!pr.body?.includes('<!-- ai-reference-previous:'));}
-export async function currentProposal(gh,kind,issue,reference){
-  return (await gh.list(gh.path('/pulls?state=open'))).find(pr=>ownedProposal(pr,gh,kind,issue.number)&&sameRevision(pr,issue)&&(reference===undefined||sameReference(pr,reference)));
+export async function currentProposal(gh,kind,issue,reference,cfg){
+  return (await gh.list(gh.path('/pulls?state=open'))).find(pr=>ownedProposal(pr,gh,kind,issue.number)&&sameRevision(pr,issue)&&(!cfg||sameAI(pr,cfg))&&(reference===undefined||sameReference(pr,reference)));
 }
 // Prior patches are bounded, scrubbed data, never instructions or executable input.
 export async function previousProposals(gh,kind,issue,cfg){

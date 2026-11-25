@@ -63,7 +63,7 @@ try {
   if(process.getuid()!==0)throw new Error();
   process.setgroups([]);targetExecution=true;
   report.stage='syntax';
-  for(const change of data.plan.changes)if(!run(['node','--check',change.path],true))throw new Error();
+  for(const change of data.plan.changes.filter(c=>/\.[cm]?js$/.test(c.path)))if(!run(['node','--check',change.path],true))throw new Error();
   report.stage='command';
   for(const command of data.commands)if(!run(command,true))throw new Error();
   report.ok=true;report.stage='complete';
