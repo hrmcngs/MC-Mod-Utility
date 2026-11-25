@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "hrmcngs/github-ai-fix-bot",
-  "commit": "ff48930ebdb93ac97ec2039fd512ccd941fa9a81",
+  "commit": "6501e648da152af90463839d2d5580e15ba915f7",
   "files": {
     ".github/ai-bot/.dockerignore": "a14239b298b8f92f4644a32b96af0e7c3ea65d51",
     ".github/ai-bot/Dockerfile": "9c4c5cee29bf4ebc58bd061f340d53e195266f37",
@@ -33,7 +33,7 @@
     ".github/workflows/fix.yml": "0ef7680ab2213701692ecc7a9f290d5686d4d98f",
     ".github/workflows/fix-one.yml": "626568c8e25addf45c08bf78e0d1b503e2e645e0",
     ".github/workflows/investigate-one.yml": "f9e2ddefaa00056f601fc7c5f3427281933bbc7f",
-    ".github/workflows/bot-updates.yml": "7481d948078a2d8fa7155062e8c3271e05068c20",
+    ".github/workflows/bot-updates.yml": "6129108c117bbe24da90cda7a7a66fd4eab67a24",
     ".github/workflows/proposal-updates.yml": "c7b8fd4769a9e89567ecddfe4d2228ed397a7a69",
     ".github/workflows/auto-merge.yml": "687acdf1b6dd9f52e42718b948c25978caee37d7",
     ".github/workflows/review.yml": "bc829012db633be22e6b99705130f41bff8881f5"
