@@ -1,40 +1,12 @@
-name: Bot update notices
+name: Diagnose update check
 on:
-  schedule:
-    - cron: '47 3 * * *'
   workflow_dispatch:
-    inputs:
-      scope:
-        description: 更新範囲（runtimeは追加トークン不要・Actions定義は手動更新）
-        type: choice
-        options: [runtime, full]
-        default: runtime
-  workflow_call:
-    inputs:
-      scope:
-        type: string
-        default: runtime
-    secrets:
-      AI_BOT_UPDATE_TOKEN:
-        required: false
-  issue_comment:
-    types: [created]
-permissions: {}
-env:
-  AI_BOT_UPDATE_SCOPE: ${{ inputs.scope || 'runtime' }}
+permissions:
+  contents: read
 jobs:
-  check:
-    concurrency:
-      group: bot-update-notices-${{ github.repository }}
-      cancel-in-progress: false
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+  diagnose:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    outputs:
-      ready: ${{ steps.check.outputs.ready }}
-      commit: ${{ steps.check.outputs.commit }}
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -43,59 +15,25 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - id: check
-        run: node .github/ai-bot/src/updates.js check
+      - name: Read-only update diagnosis without AI keys or file changes
         env:
           GH_TOKEN: ${{ github.token }}
-  authorize:
-    if: >-
-      github.event_name == 'issue_comment' && !github.event.issue.pull_request &&
-      github.event.comment.user.type == 'User' && github.event.comment.body == '/ai-update'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      issues: read
-    outputs:
-      ready: ${{ steps.authorize.outputs.ready }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - id: authorize
-        run: node .github/ai-bot/src/updates.js authorize
-        env:
-          GH_TOKEN: ${{ github.token }}
-  update-pr:
-    concurrency:
-      group: bot-update-apply-${{ github.repository }}
-      cancel-in-progress: false
-    needs: [check, authorize]
-    if: >-
-      always() && !cancelled() &&
-      (needs.check.outputs.ready == 'true' || needs.authorize.outputs.ready == 'true')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - name: Recheck authorization and propose an update without executing upstream code
-        run: node .github/ai-bot/src/updates.js apply
-        env:
-          GH_TOKEN: ${{ github.token }}
-          AI_BOT_UPDATE_TOKEN: ${{ inputs.scope == 'full' && secrets.AI_BOT_UPDATE_TOKEN || '' }}
-          AI_BOT_UPDATE_AUTOMATIC: ${{ github.event_name != 'issue_comment' && needs.check.outputs.ready == 'true' && 'true' || 'false' }}
-          AI_BOT_UPDATE_COMMIT: ${{ needs.check.outputs.commit }}
+        run: |
+          node --input-type=module <<'JS'
+          import {readFile} from 'node:fs/promises';
+          import {GitHub} from './.github/ai-bot/src/github.js';
+          import {checkUpdate,installation,STATE} from './.github/ai-bot/src/updates.js';
+          const original=globalThis.fetch;
+          globalThis.fetch=async(url,options)=>{
+            const res=await original(url,options);
+            const source=String(url).includes('/hrmcngs/github-ai-fix-bot/');
+            console.log(JSON.stringify({endpoint:source?'public-source':'destination',status:res.status,remaining:res.headers.get('x-ratelimit-remaining')}));
+            return res;
+          };
+          try{
+            const gh=new GitHub(process.env.GITHUB_REPOSITORY,process.env.GH_TOKEN);
+            await gh.request(gh.path());console.log('destination: OK');
+            const state=installation(JSON.parse(await readFile(STATE,'utf8')));console.log('installation: OK');
+            const result=await checkUpdate(gh,state,undefined,'runtime');console.log(result?'update available':'no runtime update');
+          }catch(error){console.log('safe error category: '+String(error.code||'INTERNAL'));process.exitCode=1;}
+          JS
