@@ -1,16 +1,24 @@
 {
   "version": 1,
   "source": "hrmcngs/github-ai-fix-bot",
-  "commit": "3d689e5852a7fc0d63de18b6db98aa901826c622",
+  "commit": "4e03645125c338a02e68229ee999bfb76790e784",
   "files": {
+    ".github/workflows/investigate.yml": "1a5e7f4a03553bd2536adad1ef0ce2c20077c33d",
+    ".github/workflows/fix.yml": "0ef7680ab2213701692ecc7a9f290d5686d4d98f",
+    ".github/workflows/fix-one.yml": "626568c8e25addf45c08bf78e0d1b503e2e645e0",
+    ".github/workflows/investigate-one.yml": "f9e2ddefaa00056f601fc7c5f3427281933bbc7f",
+    ".github/workflows/bot-updates.yml": "7481d948078a2d8fa7155062e8c3271e05068c20",
+    ".github/workflows/proposal-updates.yml": "c7b8fd4769a9e89567ecddfe4d2228ed397a7a69",
+    ".github/workflows/auto-merge.yml": "687acdf1b6dd9f52e42718b948c25978caee37d7",
+    ".github/workflows/review.yml": "bc829012db633be22e6b99705130f41bff8881f5",
     ".github/ai-bot/.dockerignore": "a14239b298b8f92f4644a32b96af0e7c3ea65d51",
     ".github/ai-bot/Dockerfile": "9c4c5cee29bf4ebc58bd061f340d53e195266f37",
     ".github/ai-bot/Dockerfile.verify": "644a931fe89fdaaf699b31f1675ee3a2f83af562",
     ".github/ai-bot/package.json": "f84528506796fb565716eaf2798e653919e3aa33",
     ".github/ai-bot/distribution.json": "839d4b5b9525bf4bcbd12192dc5f6ee4892eb1c5",
     ".github/ai-bot/src/configure.js": "2f950619b147969533af4cdee8503052c50bc612",
-    ".github/ai-bot/src/bulk.js": "76f8095c485e34cbab6564e551ded432b696bc7e",
-    ".github/ai-bot/src/updates.js": "9f565aca2d2d65c26bd3e0ad0090ce7d03f0c560",
+    ".github/ai-bot/src/bulk.js": "e421fe4dfeb8720316170e546f243a63b42ddaa9",
+    ".github/ai-bot/src/updates.js": "7ce54f5179d9b84024931ccaa9951f4dc650ff97",
     ".github/ai-bot/src/core.js": "069625e3158e2d374a6f074d41e8a645ded804dd",
     ".github/ai-bot/src/commands.js": "11a79749949a6e9555a47f41d0ac726088defacc",
     ".github/ai-bot/src/auto-merge.js": "7968e120299ec83db652b65485b218b69aebc730",
@@ -26,16 +34,10 @@
     ".github/ai-bot/src/fix-core.js": "e2f8ba94d0926a28a6585587c2fc8a996d2f2bb5",
     ".github/ai-bot/src/fix.js": "8b8be4a59c5cf1f02d5423e150dfc5539ff3b9b9",
     ".github/ai-bot/src/verify-container.js": "df795cd7dc4d2f5ba121ce669843022c51519c70",
-    ".github/workflows/investigate.yml": "1a5e7f4a03553bd2536adad1ef0ce2c20077c33d",
-    ".github/workflows/fix.yml": "0ef7680ab2213701692ecc7a9f290d5686d4d98f",
-    ".github/workflows/fix-one.yml": "626568c8e25addf45c08bf78e0d1b503e2e645e0",
-    ".github/workflows/investigate-one.yml": "f9e2ddefaa00056f601fc7c5f3427281933bbc7f",
-    ".github/workflows/bot-updates.yml": "7481d948078a2d8fa7155062e8c3271e05068c20",
-    ".github/workflows/proposal-updates.yml": "c7b8fd4769a9e89567ecddfe4d2228ed397a7a69",
-    ".github/workflows/auto-merge.yml": "687acdf1b6dd9f52e42718b948c25978caee37d7",
     ".github/ai-bot/src/conflicts.js": "b03883a41bf72d774734d5a1136d35d6a89ead9b",
     ".github/ai-bot/src/ai-selection.js": "89e9016fab77e857e9efa8650511592bb6713252",
-    ".github/ai-bot/src/review.js": "62e1f839c2ceef906125213c9dabff42da6eb649",
-    ".github/workflows/review.yml": "bc829012db633be22e6b99705130f41bff8881f5"
-  }
+    ".github/ai-bot/src/review.js": "62e1f839c2ceef906125213c9dabff42da6eb649"
+  },
+  "updateScope": "runtime",
+  "manualWorkflows": []
 }
