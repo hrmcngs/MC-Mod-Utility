@@ -32,7 +32,7 @@ jobs:
           };
           try{
             const gh=new GitHub(process.env.GITHUB_REPOSITORY,process.env.GH_TOKEN);
-            await gh.request(gh.path());console.log('destination: OK');
+            const repo=await gh.request(gh.path());const event=JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH,'utf8'));console.log(JSON.stringify({event:process.env.GITHUB_EVENT_NAME,eventRepo:event.repository?.full_name,repository:process.env.GITHUB_REPOSITORY,ref:process.env.GITHUB_REF,defaultBranch:repo.default_branch}));console.log('destination: OK');
             const state=installation(JSON.parse(await readFile(STATE,'utf8')));console.log('installation: OK');
             const result=await checkUpdate(gh,state,undefined,'runtime');console.log(result?'update available':'no runtime update');
           }catch(error){console.log('safe error category: '+String(error.code||'INTERNAL'));process.exitCode=1;}
