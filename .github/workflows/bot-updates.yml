@@ -3,9 +3,25 @@ on:
   schedule:
     - cron: '47 3 * * *'
   workflow_dispatch:
+    inputs:
+      scope:
+        description: 更新範囲（runtimeは追加トークン不要・Actions定義は手動更新）
+        type: choice
+        options: [runtime, full]
+        default: runtime
+  workflow_call:
+    inputs:
+      scope:
+        type: string
+        default: runtime
+    secrets:
+      AI_BOT_UPDATE_TOKEN:
+        required: false
   issue_comment:
     types: [created]
 permissions: {}
+env:
+  AI_BOT_UPDATE_SCOPE: ${{ inputs.scope || 'runtime' }}
 jobs:
   check:
     concurrency:
@@ -65,9 +81,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: read
+      contents: write
       issues: write
-      pull-requests: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -80,6 +96,6 @@ jobs:
         run: node .github/ai-bot/src/updates.js apply
         env:
           GH_TOKEN: ${{ github.token }}
-          AI_BOT_UPDATE_TOKEN: ${{ secrets.AI_BOT_UPDATE_TOKEN }}
+          AI_BOT_UPDATE_TOKEN: ${{ inputs.scope == 'full' && secrets.AI_BOT_UPDATE_TOKEN || '' }}
           AI_BOT_UPDATE_AUTOMATIC: ${{ github.event_name != 'issue_comment' && needs.check.outputs.ready == 'true' && 'true' || 'false' }}
           AI_BOT_UPDATE_COMMIT: ${{ needs.check.outputs.commit }}

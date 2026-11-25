@@ -4,6 +4,10 @@ on:
     types: [created]
   workflow_dispatch:
     inputs:
+      check_bot_updates:
+        description: Bot本体の更新PRも確認する（追加トークン不要・Actions定義は手動更新）
+        type: boolean
+        default: true
       ai:
         description: AIを選択（allは登録済みAIの案を統合・利用回数が増えます）
         type: choice
@@ -35,6 +39,15 @@ on:
     - cron: '23 * * * *'
 permissions: {}
 jobs:
+  bot-updates:
+    if: github.event_name == 'workflow_dispatch' && inputs.check_bot_updates
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    uses: ./.github/workflows/bot-updates.yml
+    with:
+      scope: runtime
   select:
     if: >-
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
