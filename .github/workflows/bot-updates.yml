@@ -22,9 +22,10 @@ jobs:
           node --input-type=module <<'JS'
           import {readFile} from 'node:fs/promises';
           import {GitHub} from './.github/ai-bot/src/github.js';
-          import {checkUpdate,installation,STATE} from './.github/ai-bot/src/updates.js';
+          import {checkUpdate,installation,STATE,updates} from './.github/ai-bot/src/updates.js';
           const original=globalThis.fetch;
           globalThis.fetch=async(url,options)=>{
+            if(options?.method&&options.method!=='GET')throw new Error('Read-only diagnostic');
             const res=await original(url,options);
             const source=String(url).includes('/hrmcngs/github-ai-fix-bot/');
             console.log(JSON.stringify({endpoint:source?'public-source':'destination',status:res.status,remaining:res.headers.get('x-ratelimit-remaining')}));
@@ -35,5 +36,8 @@ jobs:
             const repo=await gh.request(gh.path());const event=JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH,'utf8'));console.log(JSON.stringify({event:process.env.GITHUB_EVENT_NAME,eventRepo:event.repository?.full_name,repository:process.env.GITHUB_REPOSITORY,ref:process.env.GITHUB_REF,defaultBranch:repo.default_branch}));console.log('destination: OK');
             const state=installation(JSON.parse(await readFile(STATE,'utf8')));console.log('installation: OK');
             const result=await checkUpdate(gh,state,undefined,'runtime');console.log(result?'update available':'no runtime update');
-          }catch(error){console.log('safe error category: '+String(error.code||'INTERNAL'));process.exitCode=1;}
+            process.argv[2]='check';
+            const fixtureEnv={...process.env,GITHUB_REF:'refs/heads/'+repo.default_branch,AI_BOT_UPDATE_SCOPE:'runtime'};
+            await updates(fixtureEnv);console.log('read-only check entry fixture: OK');
+          }catch(error){console.log('safe error category: '+String(error.code||'INTERNAL')+' type: '+String(error.name));process.exitCode=1;}
           JS
