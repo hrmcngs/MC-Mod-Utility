@@ -5,6 +5,7 @@ export class SafeError extends Error {
   constructor(code) { super(code); this.code = code; }
 }
 export const messages = {
+  API_UNAVAILABLE: 'GitHub APIの一時的なサーバーエラーです。読み取りを再試行しましたが取得できませんでした。時間をおいて再実行してください。',
   STALE: '元ブランチまたはIssueが更新されました。新しい実行で再調査してください。',
   PR: 'PRを作成できませんでした。ActionsによるPR作成の許可とリポジトリ権限を確認してください。',
   NOTIFY: 'PRは作成済みですがIssueへの返信に失敗しました。再実行すると既存PRへのリンクを返信します。',
