@@ -1,7 +1,7 @@
 import {readFile,appendFile} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import {GitHub,botOwned} from './github.js';
-import {config,number,SafeError} from './core.js';
+import {config,number,SafeError,messages} from './core.js';
 import {isCommand,requireCommand} from './commands.js';
 
 // Reusable workers receive routing from the trusted selector, never from AI output.
@@ -17,12 +17,12 @@ export async function selectTargets(gh,event,env,cfg,mode){
   if(trigger==='issue_comment'&&!isCommand(event,env,mode==='fix'?'/ai-fix':'/ai-investigate',mode==='fix')
     &&!(mode==='investigate'&&isCommand(event,env,'/ai-report-pr')))return [];
   const repo=await gh.request(gh.path());
-  if(env.GITHUB_REF!==`refs/heads/${repo.default_branch}`)throw new SafeError('ACCESS');
+  if(env.GITHUB_REF!==`refs/heads/${repo.default_branch}`)throw new SafeError('BULK_BRANCH');
   if(repo.private&&env.ALLOW_PRIVATE_REPOSITORY!=='true')throw new SafeError('PRIVATE');
   if(!['workflow_dispatch','issue_comment','issues','schedule'].includes(trigger))throw new SafeError('ACCESS');
   if(trigger!=='schedule'){
     const role=await gh.request(gh.path(`/collaborators/${encodeURIComponent(env.GITHUB_ACTOR)}/permission`));
-    if(!['write','maintain','admin'].includes(role.permission))throw new SafeError('ACCESS');
+    if(!['write','maintain','admin'].includes(role.permission))throw new SafeError('BULK_ROLE');
   }
   if(trigger==='issue_comment'){
     const command=mode==='fix'?'/ai-fix':isCommand(event,env,'/ai-report-pr')?'/ai-report-pr':'/ai-investigate';
@@ -36,20 +36,20 @@ export async function selectTargets(gh,event,env,cfg,mode){
   if(trigger==='schedule'&&(mode==='fix'||cfg.mode!=='automatic'))return [];
   if(trigger==='schedule')return [{kind:'dependabot',number:'schedule'}];
   const kind=mode==='fix'?'issue':trigger==='schedule'?'dependabot':event.inputs?.target||'all';
-  if(!['issue','dependabot','all'].includes(kind))throw new SafeError('CONFIG');
+  if(!['issue','dependabot','all'].includes(kind))throw new SafeError('BULK_TARGET');
   if(String(event.inputs?.number||'').trim()){
-    if(kind==='all')throw new SafeError('CONFIG');
+    if(kind==='all')throw new SafeError('BULK_NUMBER');
     return [{kind,number:String(number(event.inputs.number))}];
   }
-  if(mode==='investigate'&&event.inputs?.result==='report-pr'&&kind!=='issue')throw new SafeError('CONFIG');
+  if(mode==='investigate'&&event.inputs?.result==='report-pr'&&kind!=='issue')throw new SafeError('BULK_REPORT');
   const targets=[];
   if(kind!=='dependabot'){
-    const issues=await gh.list(gh.path('/issues?state=open&sort=created&direction=asc'));
+    let issues;try{issues=await gh.list(gh.path('/issues?state=open&sort=created&direction=asc'));}catch{throw new SafeError('BULK_ISSUES');}
     for(const issue of issues)if(!issue.pull_request&&issue.state==='open'&&!botOwned(issue))targets.push({kind:'issue',number:String(number(issue.number))});
   }
   if(kind!=='issue'){
     // Fail visibly rather than claiming that every alert was processed without access.
-    const alerts=await gh.list(gh.path('/dependabot/alerts?state=open&sort=created&direction=asc'));
+    let alerts;try{alerts=await gh.list(gh.path('/dependabot/alerts?state=open&sort=created&direction=asc'));}catch{throw new SafeError('BULK_ALERTS');}
     for(const alert of alerts)if(alert.state==='open')targets.push({kind:'dependabot',number:String(number(alert.number))});
   }
   if(targets.length>256)throw new SafeError('BULK_LIMIT');
@@ -64,6 +64,20 @@ export async function select(env=process.env,ghArg){
   const text=`対象: ${targets.length}件。各対象を個別に処理し、検証失敗時は修正PRを作成しません。`;
   console.log(text);if(env.GITHUB_STEP_SUMMARY)await appendFile(env.GITHUB_STEP_SUMMARY,text+'\n');
 }
+// Report known failure categories without exposing inputs or API response bodies.
+export function selectionError(error){
+  const specific={
+    BULK_BRANCH:'デフォルトブランチを選んで実行してください。',
+    BULK_ROLE:'起動にはリポジトリのwrite以上の権限が必要です。',
+    BULK_TARGET:'targetはall・issue・dependabotから選んでください。',
+    BULK_NUMBER:'番号を指定するときはtargetをissueまたはdependabotにしてください。全件なら番号を空欄にします。',
+    BULK_REPORT:'report-prはIssue用です。target=issueを選んでください。Dependabotはcommentによる調査のみです。',
+    BULK_ISSUES:'Issue一覧を取得できませんでした。Issuesの有効化とissues: read権限を確認してください。',
+    BULK_ALERTS:'Dependabotアラート一覧を取得できませんでした。Dependabot alertsとvulnerability-alerts: read権限を確認してください。Issueだけならtarget=issueで実行できます。',
+    BULK_LIMIT:'対象が256件を超えています。IssueとDependabotを分けるか、対象を整理して再実行してください。'
+  };
+  return specific[error?.code]||messages[error?.code]||'対象一覧を取得できませんでした。GitHub権限とActionsの設定を確認してください。';
+}
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
-  try{await select();}catch(error){console.error(error.code==='BULK_LIMIT'?'対象が256件を超えています。IssueとDependabotを分けるか、対象を整理して再実行してください。':'対象一覧を取得できませんでした。権限・Dependabotの有効化・private送信許可を確認してください。');process.exitCode=1;}
+  try{await select();}catch(error){const text=selectionError(error);console.error(text);if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,text+'\n');process.exitCode=1;}
 }

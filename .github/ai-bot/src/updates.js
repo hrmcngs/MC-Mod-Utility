@@ -188,11 +188,29 @@ export async function loadInstallation(gh,event,env,action){
     console.log(text);return null;
   }
 }
+export function updateContext(gh,event,env,repo){
+  if(event.repository?.full_name!==gh.repo)throw new SafeError('UPDATE_REPOSITORY');
+  if(env.GITHUB_REF!==`refs/heads/${repo.default_branch}`)throw new SafeError('UPDATE_BRANCH');
+}
+export function updateError(error){
+  const known={
+    UPDATE_REPOSITORY:'イベントのリポジトリと実行先が一致しません。導入先のActionsから起動してください。',
+    UPDATE_BRANCH:'デフォルトブランチを選んで更新確認を実行してください。',
+    UPDATE_EVENT:'この起動方法では更新を確認できません。Run workflowから実行してください。',
+    ACCESS:'更新確認のGitHub APIにアクセスできませんでした。contents: read権限を確認してください。',
+    UPDATE_SOURCE:'配布元の取得または形式の確認に失敗しました。GitHub APIの一時的な制限や配布ファイルを確認してください。',
+    UPDATE_STATE:'Botの導入記録が不正です。インストーラーの --upgrade で移行してください。',
+    CONFIG:'更新範囲はruntimeまたはfullを指定してください。',
+    PR:'更新PRを作成できませんでした。ActionsのPR作成許可を確認してください。',
+    STALE:'確認中にブランチが更新されました。新しい実行で再確認してください。'
+  };
+  return known[error?.code]||'Bot更新の処理に失敗しました。安全なエラー分類: '+(['TypeError','SyntaxError','Error'].includes(error?.name)?error.name:'INTERNAL');
+}
 export async function updates(env=process.env){
   const gh=new GitHub(env.GITHUB_REPOSITORY,env.GH_TOKEN);
   const event=JSON.parse(await readFile(env.GITHUB_EVENT_PATH,'utf8'));
   const repo=await gh.request(gh.path());
-  if(event.repository?.full_name!==gh.repo||env.GITHUB_REF!==`refs/heads/${repo.default_branch}`)throw new SafeError('ACCESS');
+  updateContext(gh,event,env,repo);
   if(gh.repo===SOURCE)return;
   const action=process.argv[2];
   const scope=env.AI_BOT_UPDATE_SCOPE||'runtime';
@@ -204,7 +222,7 @@ export async function updates(env=process.env){
   }
   const state=await loadInstallation(gh,event,env,action);if(!state)return;
   if(action==='check'){
-    if(!['schedule','workflow_dispatch'].includes(env.GITHUB_EVENT_NAME))throw new SafeError('ACCESS');
+    if(!['schedule','workflow_dispatch'].includes(env.GITHUB_EVENT_NAME))throw new SafeError('UPDATE_EVENT');
     const update=await checkUpdate(gh,state,undefined,scope);
     if(!update)await updateSummary(env,scope==='runtime'?'Bot本体の更新はありません。Actions定義の更新は手動で確認してください。':'Botは最新版です。');
     if(update&&env.GITHUB_OUTPUT)await appendFile(env.GITHUB_OUTPUT,`ready=true\ncommit=${update.commit}\n`);
@@ -222,5 +240,5 @@ export async function updates(env=process.env){
   }else throw new SafeError('CONFIG');
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
-  try{await updates();}catch{console.error('Botの更新確認・更新PR作成に失敗しました。設定とGitHub権限を確認してください。');process.exitCode=1;}
+  try{await updates();}catch(error){const text=updateError(error);console.error(text);if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,text+'\n').catch(()=>{});process.exitCode=1;}
 }
