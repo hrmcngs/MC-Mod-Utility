@@ -42,6 +42,7 @@ jobs:
             process.argv[2]='check';
             const fixtureEnv={...process.env,GITHUB_REF:'refs/heads/'+repo.default_branch,AI_BOT_UPDATE_SCOPE:'runtime'};
             await updates(fixtureEnv);console.log('read-only check entry fixture: OK');
+            const nativeCLI=spawnSync(process.execPath,['.github/ai-bot/src/updates.js','check'],{env:fixtureEnv,encoding:'utf8',timeout:60000,maxBuffer:10000});console.log('original CLI fixture exit: '+nativeCLI.status);console.log(nativeCLI.stdout);console.log(nativeCLI.stderr);
             let code=await readFile('.github/ai-bot/src/updates.js','utf8');
             code=code.replace("}catch{console.error('Botの更新確認・更新PR作成に失敗しました。設定とGitHub権限を確認してください。');", "}catch(error){console.error(JSON.stringify({code:error.code||'INTERNAL',name:error.name}));");
             await writeFile('.github/ai-bot/src/diagnostic-updates.js',code);
