@@ -1,7 +1,7 @@
 import {readFile,appendFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
-import {GitHub,botOwned} from './github.js';
+import {GitHub,botOwned,responseWithRetry,temporaryStatus} from './github.js';
 import {SafeError,number} from './core.js';
 import {isCommand,requireCommand} from './commands.js';
 import {createLinkedProposal,proposalLink} from './proposals.js';
@@ -30,13 +30,13 @@ export class Upstream{
   async request(tail){
     if(!/^\/(?:commits\/main|git\/trees\/[a-f0-9]{40}\?recursive=1|git\/blobs\/[a-f0-9]{40})$/.test(tail))throw new SafeError('UPDATE_SOURCE');
     try{
-      const res=await this.fetcher(`https://api.github.com/repos/${SOURCE}${tail}`,{headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},redirect:'error',signal:AbortSignal.timeout(30000)});
-      if(!res.ok){await res.body?.cancel();throw new Error();}
+      const res=await responseWithRetry(this.fetcher,`https://api.github.com/repos/${SOURCE}${tail}`,{headers:{Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'},redirect:'error',signal:AbortSignal.timeout(30000)});
+      if(!res.ok){await res.body?.cancel();throw new SafeError(temporaryStatus(res.status)?'API_UNAVAILABLE':'UPDATE_SOURCE');}
       const length=Number(res.headers.get('content-length')||0);if(length>3000000)throw new Error();
       const chunks=[];let used=0;
       for await(const chunk of res.body){used+=chunk.length;if(used>3000000)throw new Error();chunks.push(chunk);}
       return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    }catch{throw new SafeError('UPDATE_SOURCE');}
+    }catch(error){throw error instanceof SafeError?error:new SafeError('UPDATE_SOURCE');}
   }
 }
 function treeMap(data){
@@ -197,6 +197,7 @@ export function updateError(error){
     UPDATE_REPOSITORY:'イベントのリポジトリと実行先が一致しません。導入先のActionsから起動してください。',
     UPDATE_BRANCH:'デフォルトブランチを選んで更新確認を実行してください。',
     UPDATE_EVENT:'この起動方法では更新を確認できません。Run workflowから実行してください。',
+    API_UNAVAILABLE:'GitHub APIが一時的なサーバーエラーを返し、読み取りの再試行上限に達しました。時間をおいて新しい実行で再確認してください。',
     ACCESS:'更新確認のGitHub APIにアクセスできませんでした。contents: read権限を確認してください。',
     UPDATE_SOURCE:'配布元の取得または形式の確認に失敗しました。GitHub APIの一時的な制限や配布ファイルを確認してください。',
     UPDATE_STATE:'Botの導入記録が不正です。インストーラーの --upgrade で移行してください。',

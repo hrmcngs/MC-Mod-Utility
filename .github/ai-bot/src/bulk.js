@@ -44,12 +44,12 @@ export async function selectTargets(gh,event,env,cfg,mode){
   if(mode==='investigate'&&event.inputs?.result==='report-pr'&&kind!=='issue')throw new SafeError('BULK_REPORT');
   const targets=[];
   if(kind!=='dependabot'){
-    let issues;try{issues=await gh.list(gh.path('/issues?state=open&sort=created&direction=asc'));}catch{throw new SafeError('BULK_ISSUES');}
+    let issues;try{issues=await gh.list(gh.path('/issues?state=open&sort=created&direction=asc'));}catch(error){if(error.code==='API_UNAVAILABLE')throw error;throw new SafeError('BULK_ISSUES');}
     for(const issue of issues)if(!issue.pull_request&&issue.state==='open'&&!botOwned(issue))targets.push({kind:'issue',number:String(number(issue.number))});
   }
   if(kind!=='issue'){
     // Fail visibly rather than claiming that every alert was processed without access.
-    let alerts;try{alerts=await gh.list(gh.path('/dependabot/alerts?state=open&sort=created&direction=asc'));}catch{throw new SafeError('BULK_ALERTS');}
+    let alerts;try{alerts=await gh.list(gh.path('/dependabot/alerts?state=open&sort=created&direction=asc'));}catch(error){if(error.code==='API_UNAVAILABLE')throw error;throw new SafeError('BULK_ALERTS');}
     for(const alert of alerts)if(alert.state==='open')targets.push({kind:'dependabot',number:String(number(alert.number))});
   }
   if(targets.length>256)throw new SafeError('BULK_LIMIT');
