@@ -103,8 +103,9 @@ export async function considerMerge(gh,n,cfg,{getProtection=protection,enable=en
   // This repository's CI is fixed by trusted default-branch code, never by the PR body.
   if(!await checks(gh,pr,settings.requiredChecks,'.github/workflows/check.yml'))return wait('最新コミットの信頼したCIがすべて成功していません。');
   const fresh=await gh.request(gh.path(`/pulls/${number(n)}`));
-  if(fresh.head.sha!==pr.head.sha||fresh.base.sha!==pr.base.sha||!botProposal(fresh,gh.repo,settings.label))return wait('確認中にPRが更新されました。');
-  if(!sameRevision(fresh,await gh.request(gh.path(`/issues/${proposal.issue}`))))return wait('確認中にIssueが更新されました。');
+  if(fresh.head.sha!==pr.head.sha||fresh.base.sha!==pr.base.sha||fresh.base.ref!==repo.default_branch||!botProposal(fresh,gh.repo,settings.label))return wait('確認中にPRが更新されました。');
+  const freshIssue=await gh.request(gh.path(`/issues/${proposal.issue}`));
+  if(freshIssue.state!=='open'||freshIssue.pull_request||!sameRevision(fresh,freshIssue))return wait('確認中にIssueが更新されました。');
   await enable(gh,fresh,settings.method);
   return{merged:true,reason:'人間の承認と必須CIを確認し、GitHubの保護ルールに従う自動マージを要求しました。'};
 }

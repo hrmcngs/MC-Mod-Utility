@@ -71,9 +71,20 @@ export function cleanOutput(text, secrets = [], limit = 18000) {
   if (typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 100000) throw new SafeError('OUTPUT');
   return scrub(text, secrets).slice(0, limit).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '');
 }
-export function comment(result, target, runUrl) {
+// Provenance comes from the immutable execution configuration, never model self-report.
+export function aiIdentity(cfg) {
+  const names={tokyo:'東京都生成AI API',claude:'Claude Code',codex:'OpenAI Codex'};
+  if(!providers.includes(cfg?.provider))throw new SafeError('OUTPUT');
+  if(cfg.provider==='tokyo')return `AI: ${names.tokyo} / モデル: 未取得（API応答から取得していません）`;
+  const model=cfg.models?.[cfg.provider];
+  if(model===undefined)return `AI: ${names[cfg.provider]} / 指定モデル: 未取得`;
+  if(typeof model!=='string'||!/^[a-zA-Z0-9._-]{1,100}$/.test(model)||scrub(model)!==model)throw new SafeError('CONFIG');
+  return `AI: ${names[cfg.provider]} / 指定モデル: \`${model}\``;
+}
+export function comment(result, target, runUrl, cfg={provider:result.provider}) {
   if (!/^[a-f0-9]{64}$/.test(target.fingerprint) || !/^[a-f0-9]{40}$/.test(target.sha) || !providers.includes(result.provider) || typeof result.ok !== 'boolean') throw new SafeError('OUTPUT');
+  if(cfg.provider!==result.provider)throw new SafeError('OUTPUT');
   const text = markdown(cleanOutput(result.text));
   const url = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/\d+$/.test(runUrl) ? runUrl : '';
-  return `<!-- ai-bot:${target.fingerprint}:${result.ok ? 'ok' : 'error'} -->\n### AI調査結果: ${target.kind} #${number(target.number)}\n\nAI: ${result.provider} / 対象SHA: \`${target.sha}\`\n\nAIによる静的調査です。コード変更・テスト・静的解析は実施していません。人間による確認が必要です。\n\n${text}\n\n${url ? `[Actionsの実行結果](${url})` : ''}`;
+  return `<!-- ai-bot:${target.fingerprint}:${result.ok ? 'ok' : 'error'} -->\n### AI調査結果: ${target.kind} #${number(target.number)}\n\n${aiIdentity(cfg)} / 対象SHA: \`${target.sha}\`\n\nAIによる静的調査です。コード変更・テスト・静的解析は実施していません。人間による確認が必要です。\n\n${text}\n\n${url ? `[Actionsの実行結果](${url})` : ''}`;
 }

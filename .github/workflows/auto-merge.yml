@@ -14,11 +14,9 @@ on:
   schedule:
     - cron: '11,26,41,56 * * * *'
 permissions: {}
-concurrency:
-  group: guarded-auto-merge-${{ github.repository }}
-  cancel-in-progress: false
 jobs:
   guarded-auto-merge:
+    if: github.event_name != 'pull_request_review' || github.event.review.state != 'commented'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

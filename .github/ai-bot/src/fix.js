@@ -1,10 +1,11 @@
+import {workerEvent} from './bulk.js';
 import { readFile, writeFile, mkdir, appendFile, stat, chmod, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { config, number, fingerprint, SafeError, messages } from './core.js';
+import { config, number, fingerprint, aiIdentity, SafeError, messages } from './core.js';
 import { GitHub, botOwned, comments } from './github.js';
 import { collectFiles, issueTarget } from './main.js';
 import { tokyo, agent, command } from './providers.js';
@@ -48,7 +49,7 @@ export async function prepareFix(env=process.env,ghArg) {
   const cfg=config(await json('.github/ai-bot/config.json'));
   const settings=fixConfig(cfg);
   if(!settings.enabled)return;
-  const event=await json(env.GITHUB_EVENT_PATH,2000000);
+  const event=workerEvent(env,await json(env.GITHUB_EVENT_PATH,2000000));
   cfg.referencePreviousPRs=referenceChoice(event,env,cfg);
   if(!['issues','workflow_dispatch','issue_comment'].includes(env.GITHUB_EVENT_NAME))throw new SafeError('ACCESS');
   if(env.GITHUB_EVENT_NAME==='issues' && (event.action!=='labeled' || event.label?.name!==settings.label))return;
@@ -136,7 +137,7 @@ export async function publishFix(env=process.env,ghArg) {
   const gh=ghArg || new GitHub(env.GITHUB_REPOSITORY,env.GH_TOKEN);
   const bundle=await json('.work/fix-bundle.json');bundleValid(bundle,env);
   const result=await json('.work/fix-plan.json',100000),verdict=await json('.work/fix-verdict.json',100000);
-  const event=await json(env.GITHUB_EVENT_PATH,2000000);
+  const event=workerEvent(env,await json(env.GITHUB_EVENT_PATH,2000000));
   const target=bundle.targets[0],n=number(target.number);
   const settings=fixConfig(bundle.cfg);
   if(!settings.enabled)throw new SafeError('ACCESS');
@@ -155,7 +156,7 @@ export async function publishFix(env=process.env,ghArg) {
   const commandId=env.GITHUB_EVENT_NAME==='issue_comment'?number(event.comment.id):undefined;
   const runUrl=`https://github.com/${gh.repo}/actions/runs/${number(env.GITHUB_RUN_ID)}`;
   const footer=`\n\n[Actionsの実行結果](${runUrl})\n\n人間によるレビューが必要です。自動マージは専用ラベルと保護ルールを設定した場合だけ有効です。`;
-  const failure=async(reason)=>{const body=`修正PRは作成していません。\n\n${markdown(reason)}${footer}`;await post(gh,n,body,commandId);await summary(body,env);};
+  const failure=async(reason)=>{const body=`修正PRは作成していません。\n\n今回の設定 — ${aiIdentity(bundle.cfg)}\n\n${markdown(reason)}${footer}`;await post(gh,n,body,commandId);await summary(body,env);};
   if(!result.ok || !verdict.ok){
     let reason=verdict.reason || result.reason || instructions;
     if(result.ok){try{const proposal=parsePlan(result.plan,bundle);if(proposal.summary!==reason)reason+=`\n\nAIの調査結果:\n${proposal.summary}`;}catch{}}
@@ -186,10 +187,10 @@ export async function publishFix(env=process.env,ghArg) {
     const blob=await gh.request(gh.path(`/git/blobs/${entry.sha}`));
     if(blob.encoding!=='base64' || Buffer.from(blob.content,'base64').toString('utf8')!==bundle.context.files.find(f=>f.path===change.path)?.content)throw new SafeError('OUTPUT');
   }
-  const prBody=`${marker(n)}\n${revisionMarker(target)}\n${referenceMarker(bundle.cfg.referencePreviousPRs??true)}\nCloses #${n}\n\nAI (${bundle.cfg.provider}) による修正提案です。人間のレビューが必要です。\n\n旧PRの参照: ${(bundle.cfg.referencePreviousPRs??true)?'あり':'なし'}\n\n${markdown(plan.summary)}\n\n検証対象SHA: \`${target.sha}\`\n変更したJavaScriptの構文チェック: 成功\nオフライン・Secretなし環境での検証: 成功\n\n${literal(settings.commands.map(args=>args.join(' ')).join('\n'))}\n\nネットワークを必要とする検証は行っていません。検証成功は修正の正しさを保証しません。${previousLinks(gh,bundle.context.previousProposals)}${footer}`;
+  const prBody=`${marker(n)}\n${revisionMarker(target)}\n${referenceMarker(bundle.cfg.referencePreviousPRs??true)}\nCloses #${n}\n\n${aiIdentity(bundle.cfg)}\n\nAIによる修正提案です。人間のレビューが必要です。\n\n旧PRの参照: ${(bundle.cfg.referencePreviousPRs??true)?'あり':'なし'}\n\n${markdown(plan.summary)}\n\n検証対象SHA: \`${target.sha}\`\n変更したJavaScriptの構文チェック: 成功\nオフライン・Secretなし環境での検証: 成功\n\n${literal(settings.commands.map(args=>args.join(' ')).join('\n'))}\n\nネットワークを必要とする検証は行っていません。検証成功は修正の正しさを保証しません。${previousLinks(gh,bundle.context.previousProposals)}${footer}`;
   try{
     await createLinkedProposal(gh,{kind:'fix',issue:n,runId:env.GITHUB_RUN_ID,sha:target.sha,id:fixId(bundle),base:bundle.branch,title:`fix: address issue #${n}`,body:prBody,files:plan.changes,notify:async(pr)=>{
-      const body=`修正案を ${proposalLink(gh,pr.number)} に作成しました。\n\n${markdown(plan.summary)}\n\n構文チェックと設定された検証は成功しました。変更内容とテストの妥当性をレビューしてください。${footer}`;
+      const body=`修正案を ${proposalLink(gh,pr.number)} に作成しました。\n\n${aiIdentity(bundle.cfg)}\n\n${markdown(plan.summary)}\n\n構文チェックと設定された検証は成功しました。変更内容とテストの妥当性をレビューしてください。${footer}`;
       await post(gh,n,body,commandId);await summary(body,env);
     }});
   }catch(error){

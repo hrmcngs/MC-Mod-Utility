@@ -12,15 +12,12 @@ on:
         options: [default, 'on', 'off']
         default: default
       number:
-        description: 修正するIssue番号（APIキーを入力しない）
-        required: true
+        description: Issue番号（空欄で未完了の全Issue・APIキーを入力しない）
+        required: false
         type: string
 permissions: {}
-concurrency:
-  group: ai-fix-${{ github.repository }}
-  cancel-in-progress: false
 jobs:
-  prepare:
+  select:
     if: >-
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name != 'issue_comment' ||
@@ -30,141 +27,47 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      issues: write
+      issues: read
       pull-requests: read
+      vulnerability-alerts: read
     outputs:
-      ready: ${{ steps.prepare.outputs.ready }}
-      provider: ${{ steps.prepare.outputs.provider }}
-      sha: ${{ steps.prepare.outputs.sha }}
+      ready: ${{ steps.select.outputs.ready }}
+      matrix: ${{ steps.select.outputs.matrix }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - id: prepare
-        run: node .github/ai-bot/src/fix.js prepare
+      - id: select
+        run: node .github/ai-bot/src/bulk.js scan-fix
         env:
           GH_TOKEN: ${{ github.token }}
           ALLOW_PRIVATE_REPOSITORY: ${{ vars.AI_BOT_ALLOW_PRIVATE }}
-      - if: steps.prepare.outputs.ready == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: fix-bundle
-          path: .work/fix-bundle.json
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
-  generate:
-    needs: prepare
-    if: needs.prepare.outputs.ready == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    permissions:
-      contents: read
-    outputs:
-      has-changes: ${{ steps.generate.outputs.has-changes }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: fix-bundle
-          path: .work
-      - name: Build Claude runner without credentials
-        if: needs.prepare.outputs.provider == 'claude'
-        run: docker build --build-arg PROVIDER=claude -f .github/ai-bot/Dockerfile -t ai-bot-claude:local .github/ai-bot
-      - name: Build Codex runner without credentials
-        if: needs.prepare.outputs.provider == 'codex'
-        run: docker build --build-arg PROVIDER=codex -f .github/ai-bot/Dockerfile -t ai-bot-codex:local .github/ai-bot
-      - name: Build credential broker without credentials
-        if: needs.prepare.outputs.provider != 'tokyo'
-        run: docker build --build-arg PROVIDER=broker -f .github/ai-bot/Dockerfile -t ai-bot-broker:local .github/ai-bot
-      - id: generate
-        name: Generate a bounded fix proposal
-        run: node .github/ai-bot/src/fix.js generate
-        env:
-          AI_API_KEY: ${{ needs.prepare.outputs.provider == 'tokyo' && secrets.TOKYO_AI_API_KEY || needs.prepare.outputs.provider == 'claude' && secrets.ANTHROPIC_API_KEY || needs.prepare.outputs.provider == 'codex' && secrets.OPENAI_API_KEY || '' }}
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: fix-plan
-          path: .work/fix-plan.json
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
-  validate:
-    needs: [prepare, generate]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: fix-bundle
-          path: .work
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: fix-plan
-          path: .work
-      - name: Build offline validator without credentials
-        if: needs.generate.outputs.has-changes == 'true'
-        run: docker build -f .github/ai-bot/Dockerfile.verify -t ai-bot-verify:local .github/ai-bot
-      - name: Validate inside a secretless offline container
-        run: node .github/ai-bot/src/fix.js validate
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: fix-verdict
-          path: .work/fix-verdict.json
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
-  publish:
-    needs: [prepare, generate, validate]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+  run:
+    concurrency:
+      group: ai-fix-${{ github.repository }}-${{ matrix.kind }}-${{ matrix.number }}
+      cancel-in-progress: false
+    needs: select
+    if: needs.select.outputs.ready == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
     permissions:
       contents: write
       issues: write
       pull-requests: write
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: fix-bundle
-          path: .work
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: fix-plan
-          path: .work
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: fix-verdict
-          path: .work
-      - name: Publish a reviewed-path PR or an investigation-only comment
-        run: node .github/ai-bot/src/fix.js publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ALLOW_PRIVATE_REPOSITORY: ${{ vars.AI_BOT_ALLOW_PRIVATE }}
+      vulnerability-alerts: read
+    uses: ./.github/workflows/fix-one.yml
+    with:
+      number: ${{ matrix.number }}
+      target: ${{ matrix.kind }}
+      result: ${{ inputs.result || 'comment' }}
+      reference_previous: ${{ inputs.reference_previous || 'default' }}
+    secrets:
+      TOKYO_AI_API_KEY: ${{ secrets.TOKYO_AI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
