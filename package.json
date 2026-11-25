@@ -316,6 +316,8 @@
   },
   "overrides": {
     "serialize-javascript": ">=7.0.5",
-    "diff": ">=8.0.3"
+    "diff": ">=8.0.3",
+    "minimatch": "11.0.9",
+    "qs": "6.16.1"
   }
 }
