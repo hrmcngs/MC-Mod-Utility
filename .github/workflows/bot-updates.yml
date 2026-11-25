@@ -20,7 +20,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module <<'JS'
-          import {readFile} from 'node:fs/promises';
+          import {readFile,writeFile} from 'node:fs/promises';
+          import {spawnSync} from 'node:child_process';
           import {GitHub} from './.github/ai-bot/src/github.js';
           import {checkUpdate,installation,STATE,updates,Upstream} from './.github/ai-bot/src/updates.js';
           const original=globalThis.fetch;
@@ -41,5 +42,12 @@ jobs:
             process.argv[2]='check';
             const fixtureEnv={...process.env,GITHUB_REF:'refs/heads/'+repo.default_branch,AI_BOT_UPDATE_SCOPE:'runtime'};
             await updates(fixtureEnv);console.log('read-only check entry fixture: OK');
+            let code=await readFile('.github/ai-bot/src/updates.js','utf8');
+            code=code.replace("}catch{console.error('Botの更新確認・更新PR作成に失敗しました。設定とGitHub権限を確認してください。');", "}catch(error){console.error(JSON.stringify({code:error.code||'INTERNAL',name:error.name}));");
+            await writeFile('.github/ai-bot/src/diagnostic-updates.js',code);
+            const cli=spawnSync(process.execPath,['.github/ai-bot/src/diagnostic-updates.js','check'],{env:fixtureEnv,encoding:'utf8',timeout:60000,maxBuffer:10000});
+            console.log('standalone CLI fixture exit: '+cli.status);
+            console.log(cli.stdout);console.log(cli.stderr);
+
           }catch(error){console.log('safe error category: '+String(error.code||'INTERNAL')+' type: '+String(error.name));process.exitCode=1;}
           JS
