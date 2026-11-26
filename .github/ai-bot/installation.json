@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "hrmcngs/github-ai-fix-bot",
-  "commit": "6501e648da152af90463839d2d5580e15ba915f7",
+  "commit": "ac7b2f0e57b98331dd66450ced444bbd86c41c71",
   "files": {
     ".github/ai-bot/.dockerignore": "a14239b298b8f92f4644a32b96af0e7c3ea65d51",
     ".github/ai-bot/Dockerfile": "9c4c5cee29bf4ebc58bd061f340d53e195266f37",
@@ -10,7 +10,7 @@
     ".github/ai-bot/distribution.json": "839d4b5b9525bf4bcbd12192dc5f6ee4892eb1c5",
     ".github/ai-bot/src/configure.js": "2f950619b147969533af4cdee8503052c50bc612",
     ".github/ai-bot/src/bulk.js": "f6e4f18b99c0b445e7bceeb93591f93ad34b172b",
-    ".github/ai-bot/src/updates.js": "8b643aa8b11d64654819ff069afe98fc1064571c",
+    ".github/ai-bot/src/updates.js": "20f02be18a1e5a30731eafab8c05e0589e7b15da",
     ".github/ai-bot/src/core.js": "98985e62dd5a0bf1133b0dec8d37b5ad7a91059c",
     ".github/ai-bot/src/commands.js": "11a79749949a6e9555a47f41d0ac726088defacc",
     ".github/ai-bot/src/auto-merge.js": "7968e120299ec83db652b65485b218b69aebc730",

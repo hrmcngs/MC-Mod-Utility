@@ -6,6 +6,7 @@ import {SafeError,number} from './core.js';
 import {isCommand,requireCommand} from './commands.js';
 import {createLinkedProposal,proposalLink} from './proposals.js';
 export const SOURCE='hrmcngs/github-ai-fix-bot';
+// Track installed file hashes so update proposals preserve repository-specific settings.
 export const STATE='.github/ai-bot/installation.json';
 export const MANIFEST='.github/ai-bot/distribution.json';
 export const UPDATE_MARKER='<!-- ai-bot-update:v1 -->';
