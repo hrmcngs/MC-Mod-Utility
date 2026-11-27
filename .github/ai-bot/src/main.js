@@ -1,3 +1,4 @@
+import {chooseAI,runAI,selectionMarker} from './ai-selection.js';
 import {workerEvent} from './bulk.js';
 import { readFile, writeFile, mkdir, appendFile, stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
@@ -48,8 +49,9 @@ export async function collectFiles(gh, sha, cfg, targets) {
 }
 export async function prepare(env = process.env, ghArg) {
   const gh = ghArg || new GitHub(env.GITHUB_REPOSITORY, env.GH_TOKEN);
-  const cfg = config(await json('.github/ai-bot/config.json'));
+  let cfg = config(await json('.github/ai-bot/config.json'));
   const event = workerEvent(env,await json(env.GITHUB_EVENT_PATH,2000000));
+  cfg=chooseAI(cfg,event,env);
   cfg.referencePreviousPRs=referenceChoice(event,env,cfg);
   const reportPR = isCommand(event,env,'/ai-report-pr') || (env.GITHUB_EVENT_NAME === 'workflow_dispatch' && event.inputs?.result === 'report-pr');
   if (env.GITHUB_EVENT_NAME === 'issue_comment' && !isCommand(event,env,'/ai-investigate') && !reportPR) return;
@@ -96,11 +98,11 @@ export async function prepare(env = process.env, ghArg) {
     if (pending.length >= cfg.maxTargetsPerRun) break;
   }
   if (!pending.length) return;
-  const existingReportPR = reportPR ? (await openReport(gh,pending[0],cfg.referencePreviousPRs))?.number : undefined;
+  const existingReportPR = reportPR ? (await openReport(gh,pending[0],cfg.referencePreviousPRs,cfg))?.number : undefined;
   const context = existingReportPR ? {files:[],omittedFiles:0} : await collectFiles(gh,sha,cfg,pending);
   if(reportPR&&!existingReportPR)context.previousProposals=await previousProposals(gh,'report',pending[0],cfg);
   await save('.work/bundle.json',{ version: 1, repo: gh.repo, cfg, targets: pending, context, reportPR, existingReportPR });
-  if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT,`ready=true\nprovider=${cfg.provider}\nreport-pr=${reportPR?'true':'false'}\nreuse-report=${existingReportPR?'true':'false'}\n`);
+  if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT,`ready=true\nprovider=${cfg.aiMode==='all'?'all':cfg.provider}\nreport-pr=${reportPR?'true':'false'}\nreuse-report=${existingReportPR?'true':'false'}\n`);
 }
 export async function analyze(env = process.env) {
   const bundle = await json('.work/bundle.json');
@@ -114,7 +116,7 @@ export async function analyze(env = process.env) {
       if (stopError) throw stopError;
       const input = prompt({ repository: bundle.repo, target, context: bundle.context });
       if (Buffer.byteLength(input) > 190000) throw new SafeError('CONFIG');
-      const text = cfg.provider === 'tokyo' ? await tokyo(input, env.AI_API_KEY) : await agent(cfg.provider,cfg.models[cfg.provider],input,env.AI_API_KEY);
+      const text = await runAI(cfg,input,env);
       results.push({ ok: true, provider: cfg.provider, text: cleanOutput(text,[env.AI_API_KEY]) });
     } catch (error) {
       const code = error instanceof SafeError ? error.code : 'INTERNAL';

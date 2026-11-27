@@ -1,3 +1,5 @@
+import {chooseAI,runAI,selectionMarker} from './ai-selection.js';
+import {prepareRepair,publishRepair} from './conflicts.js';
 import {workerEvent} from './bulk.js';
 import { readFile, writeFile, mkdir, appendFile, stat, chmod, rm } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -13,12 +15,13 @@ import { isCommand, requireCommand, referenceChoice } from './commands.js';
 import { markdown } from './markdown.js';
 import { proposalLink, createLinkedProposal } from './proposals.js';
 import {currentProposal,previousProposals,previousLinks,revisionMarker,referenceMarker} from './proposal-state.js';
-import { editable, fixConfig, fixPrompt, parsePlan, planHash, fixId, literal, validationResult, validationFailure } from './fix-core.js';
+import { changeable, editable, fixConfig, fixPrompt, parsePlan, planHash, fixId, literal, validationResult, validationFailure } from './fix-core.js';
 const exec = promisify(execFile);
 const marker = n => `<!-- ai-fix:issue:${number(n)} -->`;
 const instructions = '修正PRを作成できませんでした。Issueの具体性、許可パス、検証設定を確認してください。';
 const reasons = {
   STALE: '調査中にデフォルトブランチまたはIssueが更新されました。新しい実行で再調査してください。',
+  OUTPUT: 'AIの修正案または取得データが形式・変更範囲の制約を満たしませんでした。PRは作成していません。',
   VALIDATION: 'オフライン環境での構文チェックまたは指定した検証が失敗しました。PRは作成していません。',
   DEPENDENCIES: '検証に必要な依存パッケージをオフライン環境に用意できません。検証を省略せず、PR作成を停止しました。',
   NOTIFY: 'PRは作成しましたがIssueへの返信に失敗しました。同じコマンドで再実行すると既存PRのリンクを返信します。',
@@ -30,7 +33,12 @@ async function json(file, limit=1000000) {
 }
 async function save(file,data) { await mkdir('.work',{recursive:true});await writeFile(file,JSON.stringify(data),{mode:0o600}); }
 async function summary(text,env) { if(env.GITHUB_STEP_SUMMARY)await appendFile(env.GITHUB_STEP_SUMMARY,`${text}\n\n`); }
-function safeReason(error) {return error instanceof SafeError && error.validation ? validationFailure(error.validation) : reasons[error?.code] || messages[error?.code] || instructions;}
+const generationCode=code=>['AUTH','LIMIT','NETWORK','RUNTIME','CONFIG','OUTPUT','INTERNAL'].includes(code)?code:'OUTPUT';
+function generationFailure(code){const error=new SafeError(generationCode(code));error.phase='generation';return error;}
+function safeReason(error) {
+  const text=error instanceof SafeError && error.validation ? validationFailure(error.validation) : reasons[error?.code] || messages[error?.code] || instructions;
+  return error instanceof SafeError && error.phase==='generation' ? `修正案の生成に失敗しました。構文チェック・テストは実行していません。\n\n${text}` : text;
+}
 function bundleValid(bundle,env) {
   config(bundle.cfg);fixConfig(bundle.cfg);
   if(bundle.repo!==env.GITHUB_REPOSITORY || !Array.isArray(bundle.targets) || bundle.targets.length!==1 || bundle.targets[0].kind!=='issue' || !/^[a-f0-9]{40}$/.test(bundle.targets[0].sha) || !Array.isArray(bundle.context?.files))throw new SafeError('OUTPUT');
@@ -46,10 +54,12 @@ async function post(gh,n,body,commandId) {
 }
 export async function prepareFix(env=process.env,ghArg) {
   const gh=ghArg || new GitHub(env.GITHUB_REPOSITORY,env.GH_TOKEN);
-  const cfg=config(await json('.github/ai-bot/config.json'));
-  const settings=fixConfig(cfg);
-  if(!settings.enabled)return;
+  let cfg=config(await json('.github/ai-bot/config.json'));
   const event=workerEvent(env,await json(env.GITHUB_EVENT_PATH,2000000));
+  cfg=chooseAI(cfg,event,env);
+  if(env.GITHUB_EVENT_NAME==='issue_comment'&&event.issue?.pull_request)return prepareRepair(gh,event,env,cfg);
+  if(!cfg.fix?.enabled)return;
+  const settings=fixConfig(cfg);
   cfg.referencePreviousPRs=referenceChoice(event,env,cfg);
   if(!['issues','workflow_dispatch','issue_comment'].includes(env.GITHUB_EVENT_NAME))throw new SafeError('ACCESS');
   if(env.GITHUB_EVENT_NAME==='issues' && (event.action!=='labeled' || event.label?.name!==settings.label))return;
@@ -65,7 +75,7 @@ export async function prepareFix(env=process.env,ghArg) {
   const issue=await gh.request(gh.path(`/issues/${n}`));
   const target=issueTarget(issue);
   if(env.GITHUB_EVENT_NAME==='issues' && !issue.labels.some(l=>l.name===settings.label))return;
-  const existing=await currentProposal(gh,'fix',target,cfg.referencePreviousPRs);
+  const existing=await currentProposal(gh,'fix',target,cfg.referencePreviousPRs,cfg);
   if(existing){
     const body=`${proposalLink(gh,existing.number)} が既にあります。追加のAI呼び出しやPR作成は行いません。`;
     await post(gh,n,body,env.GITHUB_EVENT_NAME==='issue_comment'?event.comment.id:undefined);
@@ -79,22 +89,22 @@ export async function prepareFix(env=process.env,ghArg) {
   context.previousProposals=await previousProposals(gh,'fix',target,cfg);
   const bundle={version:1,repo:gh.repo,branch:repo.default_branch,cfg,targets:[{...target,sha,fingerprint:fingerprint(target,sha,cfg)}],context};
   await save('.work/fix-bundle.json',bundle);
-  if(env.GITHUB_OUTPUT)await appendFile(env.GITHUB_OUTPUT,`ready=true\nprovider=${cfg.provider}\nsha=${sha}\n`);
+  if(env.GITHUB_OUTPUT)await appendFile(env.GITHUB_OUTPUT,`ready=true\nprovider=${cfg.aiMode==='all'?'all':cfg.provider}\nsha=${sha}\n`);
 }
 export async function generateFix(env=process.env,providers={tokyo,agent}) {
   const bundle=await json('.work/fix-bundle.json');bundleValid(bundle,env);
   try {
-    if(!bundle.context.files.some(f=>editable(f.path,bundle.cfg))) {
+    if(!bundle.context.files.some(f=>changeable(f.path,bundle))) {
       await save('.work/fix-plan.json',{ok:true,plan:{confidence:'low',summary:'取得資料に変更可能な既存JavaScriptファイルがありません。includeの設定とIssueに関連するファイルを確認してください。',changes:[]}});return;
     }
     const input=fixPrompt(bundle);
     if(Buffer.byteLength(input)>190000)throw new SafeError('CONFIG');
     const cfg=bundle.cfg;
-    const text=cfg.provider==='tokyo'?await providers.tokyo(input,env.AI_API_KEY,undefined,60000):await providers.agent(cfg.provider,cfg.models[cfg.provider],input,env.AI_API_KEY,undefined,60000);
+    const text=await runAI(cfg,input,env,providers,60000);
     const plan=parsePlan(text,bundle);
     await save('.work/fix-plan.json',{ok:true,plan});
     if(plan.changes.length && env.GITHUB_OUTPUT)await appendFile(env.GITHUB_OUTPUT,'has-changes=true\n');
-  }catch(error){await save('.work/fix-plan.json',{ok:false,reason:safeReason(error)});}
+  }catch(error){const failure=generationFailure(error instanceof SafeError?error.code:'INTERNAL');await save('.work/fix-plan.json',{ok:false,code:failure.code,reason:safeReason(failure)});}
 }
 export async function validateFix(env=process.env,{run=command,git=exec}={}) {
   const bundle=await json('.work/fix-bundle.json');bundleValid(bundle,env);
@@ -103,7 +113,7 @@ export async function validateFix(env=process.env,{run=command,git=exec}={}) {
   let verdict;
   let container;
   try{
-    if(!result.ok)verdict={ok:false,reason:result.reason};
+    if(!result.ok)verdict={ok:false,code:generationCode(result.code),stage:'generation',reason:result.reason};
     else {
       const plan=parsePlan(result.plan,bundle);
       if(!plan.changes.length)verdict={ok:false,code:'NO_CHANGES',reason:plan.summary};
@@ -139,6 +149,7 @@ export async function publishFix(env=process.env,ghArg) {
   const result=await json('.work/fix-plan.json',100000),verdict=await json('.work/fix-verdict.json',100000);
   const event=workerEvent(env,await json(env.GITHUB_EVENT_PATH,2000000));
   const target=bundle.targets[0],n=number(target.number);
+  if(bundle.repair)return publishRepair(gh,event,env,bundle,result,verdict);
   const settings=fixConfig(bundle.cfg);
   if(!settings.enabled)throw new SafeError('ACCESS');
   if(event.repository?.full_name!==gh.repo)throw new SafeError('ACCESS');
@@ -163,7 +174,7 @@ export async function publishFix(env=process.env,ghArg) {
     await failure(reason);
     // Abstaining is an expected outcome, not a test failure. Verify the empty plan again.
     if(result.ok && verdict.code==='NO_CHANGES' && parsePlan(result.plan,bundle).changes.length===0)return;
-    const error=new SafeError(verdict.code==='DEPENDENCIES'?'DEPENDENCIES':'VALIDATION');
+    const error=!result.ok?generationFailure(result.code??verdict.code):new SafeError(verdict.code==='DEPENDENCIES'?'DEPENDENCIES':'VALIDATION');
     if(result.ok && verdict.stage && Array.isArray(verdict.checks)){
       try{error.validation=validationResult(JSON.stringify({version:1,ok:false,stage:verdict.stage,checks:verdict.checks}),parsePlan(result.plan,bundle),settings.commands);}catch{}
     }
@@ -176,7 +187,7 @@ export async function publishFix(env=process.env,ghArg) {
   if(ref.object?.sha!==target.sha || fingerprint(issueTarget(issue),target.sha,bundle.cfg)!==target.fingerprint || (env.GITHUB_EVENT_NAME==='issues' && !issue.labels.some(l=>l.name===settings.label))) {
     await failure(reasons.STALE);throw new SafeError('STALE');
   }
-  const existing=await currentProposal(gh,'fix',target,bundle.cfg.referencePreviousPRs);
+  const existing=await currentProposal(gh,'fix',target,bundle.cfg.referencePreviousPRs,bundle.cfg);
   if(existing){await post(gh,n,`${proposalLink(gh,existing.number)} が既にあります。${footer}`,commandId);return;}
   // Re-read original blobs before any writes. Every proposed path must remain a regular tracked file.
   const tree=await gh.request(gh.path(`/git/trees/${target.sha}?recursive=1`));
@@ -187,7 +198,7 @@ export async function publishFix(env=process.env,ghArg) {
     const blob=await gh.request(gh.path(`/git/blobs/${entry.sha}`));
     if(blob.encoding!=='base64' || Buffer.from(blob.content,'base64').toString('utf8')!==bundle.context.files.find(f=>f.path===change.path)?.content)throw new SafeError('OUTPUT');
   }
-  const prBody=`${marker(n)}\n${revisionMarker(target)}\n${referenceMarker(bundle.cfg.referencePreviousPRs??true)}\nCloses #${n}\n\n${aiIdentity(bundle.cfg)}\n\nAIによる修正提案です。人間のレビューが必要です。\n\n旧PRの参照: ${(bundle.cfg.referencePreviousPRs??true)?'あり':'なし'}\n\n${markdown(plan.summary)}\n\n検証対象SHA: \`${target.sha}\`\n変更したJavaScriptの構文チェック: 成功\nオフライン・Secretなし環境での検証: 成功\n\n${literal(settings.commands.map(args=>args.join(' ')).join('\n'))}\n\nネットワークを必要とする検証は行っていません。検証成功は修正の正しさを保証しません。${previousLinks(gh,bundle.context.previousProposals)}${footer}`;
+  const prBody=`${marker(n)}\n${revisionMarker(target)}\n${referenceMarker(bundle.cfg.referencePreviousPRs??true)}\n${selectionMarker(bundle.cfg)}\nCloses #${n}\n\n${aiIdentity(bundle.cfg)}\n\nAIによる修正提案です。人間のレビューが必要です。\n\n旧PRの参照: ${(bundle.cfg.referencePreviousPRs??true)?'あり':'なし'}\n\n${markdown(plan.summary)}\n\n検証対象SHA: \`${target.sha}\`\n変更したJavaScriptの構文チェック: 成功\nオフライン・Secretなし環境での検証: 成功\n\n${literal(settings.commands.map(args=>args.join(' ')).join('\n'))}\n\nネットワークを必要とする検証は行っていません。検証成功は修正の正しさを保証しません。${previousLinks(gh,bundle.context.previousProposals)}${footer}`;
   try{
     await createLinkedProposal(gh,{kind:'fix',issue:n,runId:env.GITHUB_RUN_ID,sha:target.sha,id:fixId(bundle),base:bundle.branch,title:`fix: address issue #${n}`,body:prBody,files:plan.changes,notify:async(pr)=>{
       const body=`修正案を ${proposalLink(gh,pr.number)} に作成しました。\n\n${aiIdentity(bundle.cfg)}\n\n${markdown(plan.summary)}\n\n構文チェックと設定された検証は成功しました。変更内容とテストの妥当性をレビューしてください。${footer}`;

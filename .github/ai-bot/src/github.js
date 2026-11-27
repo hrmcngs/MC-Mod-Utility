@@ -1,4 +1,16 @@
 import { SafeError } from './core.js';
+import {setTimeout as pause} from 'node:timers/promises';
+export const temporaryStatus=status=>[500,502,503,504].includes(status);
+// Retry idempotent reads only. Never retry PR creation, commits or other writes.
+export async function responseWithRetry(fetcher,url,options={},wait=pause){
+  const attempts=(options.method||'GET')==='GET'?3:1;
+  for(let attempt=0;attempt<attempts;attempt++){
+    const response=await fetcher(url,{...options,signal:AbortSignal.timeout(30000)});
+    if(!temporaryStatus(response.status)||attempt===attempts-1)return response;
+    await response.body?.cancel();await wait(500*(attempt+1));
+  }
+}
+
 export class GitHub {
   constructor(repo, token, fetcher = fetch) {
     if (!/^[\w.-]+\/[\w.-]+$/.test(repo) || !token) throw new SafeError('ACCESS');
@@ -7,13 +19,13 @@ export class GitHub {
   async request(path, method = 'GET', body) {
     if (!path.startsWith(`/repos/${this.repo}/`) && path !== `/repos/${this.repo}`) throw new SafeError('ACCESS');
     try {
-      const res = await this.fetcher(`https://api.github.com${path}`, { method, headers: {
+      const res = await responseWithRetry(this.fetcher,`https://api.github.com${path}`, { method, headers: {
         Authorization: `Bearer ${this.token}`, Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json'
       }, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'error', signal: AbortSignal.timeout(30000) });
-      if (!res.ok) { await res.body?.cancel(); throw new SafeError('ACCESS'); }
+      if (!res.ok) { await res.body?.cancel(); throw new SafeError(temporaryStatus(res.status)?'API_UNAVAILABLE':'ACCESS'); }
       return res.status === 204 ? null : await res.json();
-    } catch { throw new SafeError('ACCESS'); }
+    } catch(error) { throw error instanceof SafeError?error:new SafeError('ACCESS'); }
   }
   async list(path) {
     const all = [];

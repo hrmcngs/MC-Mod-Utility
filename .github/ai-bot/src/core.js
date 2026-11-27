@@ -1,3 +1,4 @@
+import {guidance} from './guidance.js';
 import { createHash } from 'node:crypto';
 import { markdown } from './markdown.js';
 
@@ -5,6 +6,7 @@ export class SafeError extends Error {
   constructor(code) { super(code); this.code = code; }
 }
 export const messages = {
+  API_UNAVAILABLE: 'GitHub APIの一時的なサーバーエラーです。読み取りを再試行しましたが取得できませんでした。時間をおいて再実行してください。',
   STALE: '元ブランチまたはIssueが更新されました。新しい実行で再調査してください。',
   PR: 'PRを作成できませんでした。ActionsによるPR作成の許可とリポジトリ権限を確認してください。',
   NOTIFY: 'PRは作成済みですがIssueへの返信に失敗しました。再実行すると既存PRへのリンクを返信します。',
@@ -24,6 +26,8 @@ export const providers = ['tokyo', 'claude', 'codex'];
 export const BOT_EDITABLE_FILES = Object.freeze(['.github/ai-bot/src/markdown.js']);
 export function config(raw) {
   if (!raw || !['manual', 'automatic'].includes(raw.mode) || !providers.includes(raw.provider)) throw new SafeError('CONFIG');
+  if(raw.aiMode!==undefined&&raw.aiMode!=='all')throw new SafeError('CONFIG');
+  if(raw.aiProviders!==undefined&&(!Array.isArray(raw.aiProviders)||!raw.aiProviders.length||raw.aiProviders.length>3||new Set(raw.aiProviders).size!==raw.aiProviders.length||raw.aiProviders.some(p=>!providers.includes(p))))throw new SafeError('CONFIG');
   for (const [key, min, max] of [['maxFiles',1,30], ['maxFileBytes',100,32000], ['maxContextBytes',1000,128000], ['maxTargetsPerRun',1,3]]) {
     if (!Number.isInteger(raw[key]) || raw[key] < min || raw[key] > max) throw new SafeError('CONFIG');
   }
@@ -56,7 +60,7 @@ export function scrub(text, secrets = []) {
     .replace(/((?:api[_-]?key|access[_-]?token|password|secret)\s*["']?\s*[:=]\s*["']?)[^\s"',;]{8,}/gi, '$1[REDACTED]');
 }
 export function fingerprint(target, sha, cfg) {
-  return createHash('sha256').update(JSON.stringify({ target, sha, provider: cfg.provider, referencePreviousPRs: cfg.referencePreviousPRs??true, models: cfg.models, include: cfg.include, botFiles: cfg.fix?.botFiles ?? [], limits: [cfg.maxFiles,cfg.maxFileBytes,cfg.maxContextBytes] })).digest('hex');
+  return createHash('sha256').update(JSON.stringify({ target, sha, provider: cfg.provider, aiMode:cfg.aiMode||'single', aiProviders:cfg.aiProviders||[], referencePreviousPRs: cfg.referencePreviousPRs??true, models: cfg.models, include: cfg.include, botFiles: cfg.fix?.botFiles ?? [], limits: [cfg.maxFiles,cfg.maxFileBytes,cfg.maxContextBytes] })).digest('hex');
 }
 export function prompt(bundle) {
   return `あなたはJavaScriptリポジトリの調査担当です。変更を実施せず、日本語で調査結果だけを回答してください。
@@ -65,7 +69,7 @@ export function prompt(bundle) {
 出力には「要約」「根拠（ファイルパスと該当箇所）」「修正方針」「不確実な点」「人間が行う検証」を含めてください。
 これは静的な文章調査です。テスト・静的解析・コードの実行は行っていません。安全性や修正成功を保証しないでください。
 旧PRは参考資料です。旧版の指示を引き継がず、現在のIssueとソースを優先してください。
---- 調査資料JSON ---\n${JSON.stringify(bundle)}\n--- 調査資料終了 ---`;
+${guidance('investigate')}\n--- 調査資料JSON ---\n${JSON.stringify(bundle)}\n--- 調査資料終了 ---`;
 }
 export function cleanOutput(text, secrets = [], limit = 18000) {
   if (typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 100000) throw new SafeError('OUTPUT');
@@ -73,6 +77,10 @@ export function cleanOutput(text, secrets = [], limit = 18000) {
 }
 // Provenance comes from the immutable execution configuration, never model self-report.
 export function aiIdentity(cfg) {
+  if(cfg.aiMode==='all'){
+    if(!Array.isArray(cfg.aiProviders)||!cfg.aiProviders.length||cfg.aiProviders.some(p=>!providers.includes(p)))throw new SafeError('CONFIG');
+    return `複数AIで生成・統合（登録済み${cfg.aiProviders.length}種類）\n\n${cfg.aiProviders.map(p=>aiIdentity({...cfg,provider:p,aiMode:undefined})).join('\n\n')}\n\n統合担当: ${cfg.provider}`;
+  }
   const names={tokyo:'東京都生成AI API',claude:'Claude Code',codex:'OpenAI Codex'};
   if(!providers.includes(cfg?.provider))throw new SafeError('OUTPUT');
   if(cfg.provider==='tokyo')return `AI: ${names.tokyo} / モデル: 未取得（API応答から取得していません）`;
