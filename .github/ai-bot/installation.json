@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "hrmcngs/github-ai-fix-bot",
-  "commit": "2a6127bccff8dc54863c810a6d3729ccb62a4171",
+  "commit": "49e622683e4291cefea2dc4f3a3f20b738fe9eab",
   "files": {
     ".github/ai-bot/.dockerignore": "a14239b298b8f92f4644a32b96af0e7c3ea65d51",
     ".github/ai-bot/Dockerfile": "9c4c5cee29bf4ebc58bd061f340d53e195266f37",
@@ -29,7 +29,7 @@
     ".github/ai-bot/src/conflicts.js": "b03883a41bf72d774734d5a1136d35d6a89ead9b",
     ".github/ai-bot/src/ai-selection.js": "89e9016fab77e857e9efa8650511592bb6713252",
     ".github/ai-bot/src/review.js": "539e634ec73621b44eac3a74984a54a9385bb88d",
-    ".github/ai-bot/src/guidance.js": "302bd8d704415d0ba5b1d1ecc2edbcf3d1f3fd53",
+    ".github/ai-bot/src/guidance.js": "6302b89a729c51a3adadc897f8361df99561e993",
     ".github/workflows/review.yml": "bc829012db633be22e6b99705130f41bff8881f5",
     ".github/workflows/investigate.yml": "687595aaebccbecbbc1a47f3292330574975dacf",
     ".github/workflows/fix.yml": "5e19436488ded7800e0e9009eabbf73c362f5fb8",
