@@ -1,7 +1,7 @@
 {
   "version": 1,
   "source": "hrmcngs/github-ai-fix-bot",
-  "commit": "49e622683e4291cefea2dc4f3a3f20b738fe9eab",
+  "commit": "8a7609a21e262bb963ba94f719c3d5d84617fd27",
   "files": {
     ".github/ai-bot/.dockerignore": "a14239b298b8f92f4644a32b96af0e7c3ea65d51",
     ".github/ai-bot/Dockerfile": "9c4c5cee29bf4ebc58bd061f340d53e195266f37",
@@ -10,7 +10,7 @@
     ".github/ai-bot/distribution.json": "50d0d0a8dc59edf70c7899ce4c9f821f9d4c2af4",
     ".github/ai-bot/src/configure.js": "2f950619b147969533af4cdee8503052c50bc612",
     ".github/ai-bot/src/bulk.js": "b247c1dd3dfa38476dfc67536229b2468fe6b4f7",
-    ".github/ai-bot/src/updates.js": "656d4efd3e7785e855f4f565a8795d2d785e7d33",
+    ".github/ai-bot/src/updates.js": "29e9b66ceb8325ce3d30f78233f5a66faf7c66d6",
     ".github/ai-bot/src/core.js": "e60db9609a8a1ea88eacdbfcc4f0b16ae9ea4ee1",
     ".github/ai-bot/src/commands.js": "11a79749949a6e9555a47f41d0ac726088defacc",
     ".github/ai-bot/src/auto-merge.js": "7968e120299ec83db652b65485b218b69aebc730",
@@ -29,7 +29,7 @@
     ".github/ai-bot/src/conflicts.js": "b03883a41bf72d774734d5a1136d35d6a89ead9b",
     ".github/ai-bot/src/ai-selection.js": "89e9016fab77e857e9efa8650511592bb6713252",
     ".github/ai-bot/src/review.js": "539e634ec73621b44eac3a74984a54a9385bb88d",
-    ".github/ai-bot/src/guidance.js": "6302b89a729c51a3adadc897f8361df99561e993",
+    ".github/ai-bot/src/guidance.js": "0c037f3eb3a0229e45e2fcbfb640ed12fef74f5d",
     ".github/workflows/review.yml": "bc829012db633be22e6b99705130f41bff8881f5",
     ".github/workflows/investigate.yml": "687595aaebccbecbbc1a47f3292330574975dacf",
     ".github/workflows/fix.yml": "5e19436488ded7800e0e9009eabbf73c362f5fb8",
@@ -40,5 +40,7 @@
     ".github/workflows/auto-merge.yml": "687acdf1b6dd9f52e42718b948c25978caee37d7"
   },
   "updateScope": "runtime",
-  "manualWorkflows": []
+  "manualWorkflows": [
+    ".github/workflows/bot-updates.yml"
+  ]
 }
